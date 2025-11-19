@@ -21,13 +21,40 @@ pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, ala
     };
 
     //alarm_detailから各ユニット毎のキー一覧を追加する
-    let ld_alarmcode_vec:Vec<String>=alarm_detail.ld_alarm.keys().cloned().collect();
-    let dc1_alarmcode_vec:Vec<String>=alarm_detail.dc1_alarm.keys().cloned().collect();
-    let ac1_alarmcode_vec:Vec<String>=alarm_detail.ac1_alarm.keys().cloned().collect();
-    let ac2_alarmcode_vec:Vec<String>=alarm_detail.ac2_alarm.keys().cloned().collect();
-    let dc2_alarmcode_vec:Vec<String>=alarm_detail.dc2_alarm.keys().cloned().collect();
-    let ip_alarmcode_vec:Vec<String>=alarm_detail.ip_alarm.keys().cloned().collect();
-    let uld_alarmcode_vec:Vec<String>=alarm_detail.uld_alarm.keys().cloned().collect();
+    let mut ld_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.ld_alarm.keys(){
+        ld_alarmcode_vec.push(x.parse::<i32>()?)
+    }
+
+    let mut dc1_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.dc1_alarm.keys(){
+        dc1_alarmcode_vec.push(x.parse::<i32>()?)
+    }
+
+    let mut ac1_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.ac1_alarm.keys(){
+        ac1_alarmcode_vec.push(x.parse::<i32>()?)
+    }
+
+    let mut ac2_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.ac2_alarm.keys(){
+        ac2_alarmcode_vec.push(x.parse::<i32>()?)
+    }
+
+    let mut dc2_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.dc2_alarm.keys(){
+        dc2_alarmcode_vec.push(x.parse::<i32>()?)
+    }
+
+    let mut ip_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.ip_alarm.keys(){
+        ip_alarmcode_vec.push(x.parse::<i32>()?)
+    }
+
+    let mut uld_alarmcode_vec:Vec<i32>=vec![];
+    for x in alarm_detail.uld_alarm.keys(){
+        uld_alarmcode_vec.push(x.parse::<i32>()?)
+    }
 
     let db = Connection::open(db_path)?;
 
@@ -102,100 +129,85 @@ pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, ala
             });
 
         // lot_start_time / lot_end_time を更新
-        lot_entry.check_date(&ld_tray_time);
+        lot_entry.check_date(&ld_pickup_date,&uld_put_date);
 
         // 例: 各アラームの非空文字列をカウントに追加（必要に応じて拡張）
         match chip.ld_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .ld_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .ld_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
 
         match chip.dc1_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .dc1_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .dc1_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
 
         match chip.ac1_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .ac1_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .ac1_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
 
         match chip.ac2_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .ac2_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .ac2_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
 
         match chip.dc2_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .dc2_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .dc2_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
 
         match chip.ip_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .ip_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .ip_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
 
         match chip.uld_alarm{
             Some(s)=>{
-                if !s.is_empty(){
-                    *lot_entry
-                    .alarm_list
-                    .uld_alarm
-                    .entry(s.clone())
-                    .or_insert(0) += 1;
-                }
+                *lot_entry
+                .alarm_list
+                .uld_alarm
+                .entry(s.clone())
+                .or_insert(0) += 1;
             },
             None=>{}
         }
-
     }
 
     Ok((return_hashmap,alarm_detail))
