@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 use variants::{LotData,MachineData,AlarmDetail};
 use graph::variants::GraphCondition;
 use std::{env,fs};
+use once_cell::sync::Lazy;
 
 use crate::lotdata::get_lotdata;
 use crate::alarmdata::get_alarmdata;
@@ -16,6 +17,19 @@ mod alarmdata;
 mod variants;
 mod graph;
 
+// グローバル設定
+static DB_PATH: Lazy<String> = Lazy::new(|| {
+    env::var("DB_PATH").unwrap_or("C:\\chiptest.db".to_string())
+});
+
+static DB_TABLE_JSON_PATH: Lazy<String> = Lazy::new(|| {
+    env::var("DB_TABLE_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\dbtable.json".to_string())
+});
+
+static ALARM_JSON_PATH: Lazy<String> = Lazy::new(|| {
+    env::var("ALARM_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\alarm.json".to_string())
+}); 
+
 // ロット単位のデータを返す
 //Input:lot_number
 //Output:稼働データ
@@ -24,8 +38,7 @@ async fn download_lot(data: web::Json<LotData>) -> HttpResponse {
     let success;
     let message;
     println!("{:?}",data);
-    let db_path:String=env::var("DB_PATH").unwrap_or("C:\\chiptest.db".to_string());
-    let lotdata=match get_lotdata(&db_path, &data.lot_name){
+    let lotdata=match get_lotdata(&DB_PATH, &data.lot_name){
         Ok(v)=>{
             success=true;
             message="success!".to_string();
@@ -53,10 +66,7 @@ async fn download_alarm(data: web::Json<MachineData>) -> HttpResponse {
     let success;
     let message;
     println!("{:?}",data);
-    let db_path:String=env::var("DB_PATH").unwrap_or("C:\\chiptest.db".to_string());
-    let dbtable_json_path:String=env::var("DB_TABLE_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\dbtable.json".to_string());
-    let alarm_json_path:String=env::var("ALARM_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\alarm.json".to_string());
-    let lotdata=match get_alarmdata(&db_path, &dbtable_json_path,&data.machine_name,&alarm_json_path){
+    let lotdata=match get_alarmdata(&DB_PATH, &DB_TABLE_JSON_PATH,&data.machine_name,&ALARM_JSON_PATH){
         Ok(v)=>{
             success=true;
             message="success!".to_string();
@@ -92,8 +102,7 @@ async fn download_alarm(data: web::Json<MachineData>) -> HttpResponse {
 
 #[post("/get_machine_list")]
 async fn get_machine_list()->HttpResponse{
-    let dbtable_json_path:String=env::var("DB_TABLE_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\dbtable.json".to_string());
-    let s=match fs::read_to_string(dbtable_json_path){
+    let s=match fs::read_to_string(&*DB_TABLE_JSON_PATH){
         Ok(s)=>s,
         Err(e)=>{
             "{}".to_string()
@@ -125,18 +134,20 @@ async fn get_machine_list()->HttpResponse{
 }
 
 ///グラフデータを返す
-#[post("/get_graph_data")]
-async fn get_graph_data(graph_condition: web::Json<GraphCondition>) -> HttpResponse {
-
-
-
+#[post("/get_graphdata")]
+async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpResponse {
+    // DB_PATHは必要に応じて使用
+    let (graph_data,sub_data)=match get_graphdata_from_db(&DB_PATH, graph_condition){
+        Ok(d)=>d,
+        Err(e)=>{
+        }
+    };
 
     let response=serde_json::json!({
+
     });
 
     HttpResponse::Ok().json(response)
-
-
 }
 
 // --- メイン ---
@@ -158,6 +169,7 @@ async fn main() -> std::io::Result<()> {
             .service(download_lot)
             .service(download_alarm)
             .service(get_machine_list)
+            .service(get_graphdata)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
