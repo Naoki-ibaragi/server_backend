@@ -8,6 +8,7 @@ use graph::variants::GraphCondition;
 use std::{env,fs};
 use once_cell::sync::Lazy;
 
+use crate::graph::variants::{DensityPlotGridData,SubData};
 use crate::lotdata::get_lotdata;
 use crate::alarmdata::get_alarmdata;
 use crate::graph::graphdata::get_graphdata_from_db;
@@ -136,14 +137,41 @@ async fn get_machine_list()->HttpResponse{
 ///グラフデータを返す
 #[post("/get_graphdata")]
 async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpResponse {
+    println!("here is get_graphdata");
     // DB_PATHは必要に応じて使用
-    let (graph_data,sub_data)=match get_graphdata_from_db(&DB_PATH, graph_condition){
-        Ok(d)=>d,
+    let mut grid_len_x=0.;
+    let mut grid_len_y=0.;
+    println!("{:?}",graph_condition);
+
+    let (success,message,graph_data,grid_len_x,grid_len_y)=match get_graphdata_from_db(&DB_PATH, &graph_condition){
+        Ok(data)=>{
+            //subdataの取り出し
+            match data.1{
+                SubData::DensityPlot(s)=>{
+                    grid_len_x=s.grid_x;
+                    grid_len_y=s.grid_y;
+                },
+                _=>{
+                    grid_len_x=0.;
+                    grid_len_y=0.;
+                }
+
+            }
+
+            (true, "success".to_string(), data.0,grid_len_x,grid_len_y)
+
+        },
         Err(e)=>{
+            (false, format!("{}",e),HashMap::new(),grid_len_x,grid_len_y)
         }
     };
 
     let response=serde_json::json!({
+        "success":success,
+        "message":message,
+        "graph_data":graph_data,
+        "grid_len_x":grid_len_x,
+        "grid_len_y":grid_len_y,
 
     });
 

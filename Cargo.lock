@@ -1077,6 +1077,7 @@ dependencies = [
  "actix-cors",
  "actix-web",
  "indexmap",
+ "once_cell",
  "rusqlite",
  "serde",
  "serde_json",

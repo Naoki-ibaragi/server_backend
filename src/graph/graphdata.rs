@@ -10,7 +10,7 @@ use crate::graph::alarm_plotdata::*;
 use crate::graph::plotdata::*;
 
 //DBからデータを取得してHighChartで使用可能なデータに成形する
-pub fn get_graphdata_from_db(db_path:&str,graph_condition:GraphCondition)->Result<(HashMap<String,Vec<PlotData>>,SubData),Box<dyn Error>>{
+pub fn get_graphdata_from_db(db_path:&str,graph_condition:&GraphCondition)->Result<(HashMap<String,Vec<PlotData>>,SubData),Box<dyn Error>>{
     //DBに接続
     let conn=Connection::open(db_path);
 
@@ -20,16 +20,51 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:GraphCondition)->Resul
         Err(e)=>return Err(Box::new(e)),
     };
 
-    //sql分を生成
-    let sql=create_sql(&graph_condition);
-    let mut stmt=db.prepare(&sql)?;
+    //テーブル一覧を取得
+    let table_list_sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+    let mut table_stmt = db.prepare(table_list_sql)?;
+    let table_names: Vec<String> = table_stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+
+    println!("取得したテーブル一覧: {:?}", table_names);
+
+    //各テーブルからデータを取得するためのUNION ALL SQLを生成
+    let mut union_sql_parts = Vec::new();
+    for table_name in &table_names {
+        let sql = create_sql(&graph_condition, table_name);
+        union_sql_parts.push(sql);
+    }
+
+    //全テーブルのデータを統合
+    let sql = union_sql_parts.join(" UNION ALL ");
+    println!("=== UNION ALL SQL ===");
+    println!("{}", sql);
+    println!("====================");
 
     // --- 件数を先に取得 ---
     let count_sql = format!(
         "SELECT COUNT(*) FROM ({}) AS subquery",
         sql
     );
+    println!("sql:{}",count_sql);
     let total_count: i64 = db.query_row(&count_sql, [], |row| row.get(0))?;
+    println!("total count:{}",total_count);
+
+    let mut stmt=db.prepare(&sql)?;
+    println!("Statement prepared successfully");
+
+    // デバッグ: 直接クエリを実行してみる
+    let mut test_rows = stmt.query([])?;
+    let mut test_count = 0;
+    while let Some(_row) = test_rows.next()? {
+        test_count += 1;
+    }
+    println!("Direct query test: {} rows found", test_count);
+    drop(test_rows);
+
+    // Statementをリセット
+    let mut stmt=db.prepare(&sql)?;
 
     //ここにHighChartsで表示用のデータを全て入れる
     let mut data_map:HashMap<String,Vec<PlotData>>=HashMap::new();
@@ -66,9 +101,15 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:GraphCondition)->Resul
     //アラームのプロットを重ねる場合の処理を入れる
     if !graph_condition.alarm.codes.is_empty(){
 
-        //sql分を生成
-        let sql=create_alarm_sql(&graph_condition);
-        let mut stmt=db.prepare(&sql)?;
+        //各テーブルからアラームデータを取得するためのUNION ALL SQLを生成
+        let mut alarm_union_sql_parts = Vec::new();
+        for table_name in &table_names {
+            let sql = create_alarm_sql(&graph_condition, table_name);
+            alarm_union_sql_parts.push(sql);
+        }
+
+        //全テーブルのアラームデータを統合
+        let sql = alarm_union_sql_parts.join(" UNION ALL ");
 
         // --- 件数を先に取得 ---
         let count_sql = format!(
@@ -76,6 +117,8 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:GraphCondition)->Resul
             sql
         );
         let total_count: i64 = db.query_row(&count_sql, [], |row| row.get(0))?;
+
+        let mut stmt=db.prepare(&sql)?;
 
         //アラーム分のデータをdata_mapに追加する
         match graph_condition.plot_unit.as_str() {

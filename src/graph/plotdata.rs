@@ -6,28 +6,27 @@ use crate::graph::variants::*;
 
 //プロット分割しない散布図のデータを取得
 pub fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement)->Result<(),Box<dyn Error>>{
+    println!("plot_scatterplot_without_unit - total_count: {}", total_count);
     data_map.entry("data".to_string()).or_insert(vec![]);
 
     let query_rows: Vec<Vec<i32>> = stmt.query_map([], |row| {
-        let x_value: String = row.get(0)?;
-        let y_value: String = row.get(1)?;
-        Ok((x_value, y_value))
+        let x_value: i32 = row.get(0)?;
+        let y_value: i32 = row.get(1)?;
+        Ok(vec![x_value, y_value])
     })?
-    .filter_map(|r| {
-        let (x_val, y_val) = r.ok()?;
-        let x = x_val.parse::<i32>().ok()?;
-        let y = y_val.parse::<i32>().ok()?;
-        Some(vec![x, y])
-    })
-    .collect();
+    .collect::<Result<Vec<Vec<i32>>, _>>()?;
+
+    println!("query_rows collected: {} rows", query_rows.len());
 
     // 最初に全ての行をカウント（オプション：パフォーマンスが心配な場合は別途COUNT(*)で取得）
     // 以下のコードでは処理しながら報告していく方式を使用
     let rows= data_map.get_mut("data").unwrap();
-    for (index,record) in query_rows.into_iter().enumerate(){
+    for (_index,record) in query_rows.into_iter().enumerate(){
         rows.push(PlotData::Number(NumberData::new(record[0],record[1])));
 
     }
+
+    println!("Final data_map size: {}", rows.len());
 
     Ok(())
 }
