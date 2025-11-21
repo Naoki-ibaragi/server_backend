@@ -32,109 +32,50 @@ pub struct AlarmInfo{ //アラームプロットを重ねる場合：アラー�
 /* ------------------------------------------- */
 
 /*プロットデータ型の定義 */
-//x,yともに数値型の場合のプロットデータ
 #[derive(Debug,Serialize)]
-pub struct NumberData{
-    pub x:i32,
-    pub y:i32,
+pub enum XdimData{
+    NumberData(i32),
+    StringData(String)
 }
 
-impl NumberData{
-    pub fn new(x:i32,y:i32)->Self{
-        NumberData{x:x,y:y}
-    }
-}
-
-//xが日付の場合のプロットデータ
 #[derive(Debug,Serialize)]
-pub struct CalenderData{
-    pub x:String,
-    pub y:i32,
+pub struct ScatterPlotData{
+    pub x_data:XdimData, //日付等の文字列と通常数値両方取る可能性がある
+    pub y_data:i32,
 }
 
-impl CalenderData{
-    pub fn new(x:String,y:i32)->Self{
-        CalenderData{x:x,y:y}
-    }
-}
-
-//ヒストグラムで使用する1Dデータ
 #[derive(Debug,Serialize)]
-pub struct NumberData_1D{
-    pub x:i32,
+pub struct LinePlotData{
+    pub x_data:XdimData,
+    pub y_data:i32,
 }
 
-impl NumberData_1D{
-    pub fn new(x:i32)->Self{
-        NumberData_1D{x:x}
-    }
+#[derive(Debug,Serialize)]
+pub struct HistogramData{
+    pub x_data:i32,
 }
 
-//で使プロットｔする3Dデータ
 #[derive(Debug,Serialize)]
 pub struct HeatmapData{
-    pub x:u32,
-    pub y:u32,
-    pub z:u32,
+    pub x_data:u32,
+    pub y_data:u32,
+    pub z_data:i32,
 }
 
-impl HeatmapData{
-    pub fn new(x:u32,y:u32,z:u32)->Self{
-        HeatmapData{x:x,y:y,z:z}
-    }
-}
-
-
-//各プロット型をまとめた列挙型
 #[derive(Debug,Serialize)]
-#[serde(untagged)] // JSON出力時に型名を省略
-pub enum PlotData {
-    Number(NumberData),
-    Calendar(CalenderData),
-    Number1D(NumberData_1D),
-    Heatmap(HeatmapData)
+pub enum PlotData{
+    Scatter(ScatterPlotData),
+    Line(ScatterPlotData),
+    Histogram(HistogramData),
+    Heatmap(HeatmapData),
 }
 
-//plot分割する場合のunit付データ
+//ヒートマップ描画でフロントエンド側に返すべき情報
 #[derive(Debug,Serialize)]
-pub struct TmpData{
-    pub unit:String,
-    pub data:PlotData,
-}
-
-impl TmpData{
-    pub fn new(unit:String,data:PlotData)->Self{
-        TmpData{unit:unit,data}
-    }
-}
-
-//plot分割する場合のunit付データ（1次元版）
-#[derive(Debug,Serialize)]
-pub struct TmpData_1D{
-    pub unit:String,
-    pub data:PlotData,
-}
-
-impl TmpData_1D{
-    pub fn new(unit:String,data:PlotData)->Self{
-        TmpData_1D{unit:unit,data}
-    }
-}
-
-//グラフデータ以外にフロントエンドに返すデータをまとめる
-pub enum SubData{
-    DensityPlot(DensityPlotGridData),
-    None
-}
-
-//密度プロットを書くときにフロントに返す
-pub struct DensityPlotGridData{
+pub struct GridData{
     pub grid_x:f64,
     pub grid_y:f64,
+    pub x_min:i32,
+    pub y_min:i32,
 }
 
-impl DensityPlotGridData{
-    pub fn new(x:f64,y:f64)->Self{
-        DensityPlotGridData{grid_x:x,grid_y:y}
-    }
-}
