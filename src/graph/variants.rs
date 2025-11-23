@@ -27,7 +27,7 @@ pub struct Filter{ //各フィルターの内容を入れる構造体
 #[derive(Debug,Deserialize)]
 pub struct AlarmInfo{ //アラームプロットを重ねる場合：アラームの内容を入れる構造体
     pub unit:String,
-    pub codes:Vec<String>,
+    pub codes:Vec<i32>,
 }
 /* ------------------------------------------- */
 
@@ -46,13 +46,25 @@ pub struct ScatterPlotData{
 
 #[derive(Debug,Serialize)]
 pub struct LinePlotData{
-    pub x_data:XdimData,
     pub y_data:i32,
+    pub is_alarm:bool,
 }
 
 #[derive(Debug,Serialize)]
 pub struct HistogramData{
     pub x_data:i32,
+}
+
+#[derive(Debug,Serialize)]
+pub struct BinnedHistogramData{
+    pub bin_index: usize,     // ビンのインデックス
+    pub count: i32,           // そのビンの個数
+}
+
+#[derive(Debug,Serialize)]
+pub struct HistogramBinInfo{
+    pub bin_edges: Vec<i32>,  // ビンの境界値 [min, edge1, edge2, ..., max]
+    pub bin_width: f64,       // ビン幅
 }
 
 #[derive(Debug,Serialize)]
@@ -65,8 +77,9 @@ pub struct HeatmapData{
 #[derive(Debug,Serialize)]
 pub enum PlotData{
     Scatter(ScatterPlotData),
-    Line(ScatterPlotData),
+    Line(LinePlotData),
     Histogram(HistogramData),
+    BinnedHistogram(BinnedHistogramData),
     Heatmap(HeatmapData),
 }
 
@@ -77,5 +90,6 @@ pub struct GridData{
     pub grid_y:f64,
     pub x_min:i32,
     pub y_min:i32,
+    pub histogram_bin_info: Option<HistogramBinInfo>,  // ヒストグラムのビン情報
 }
 

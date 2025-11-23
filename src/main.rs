@@ -38,7 +38,6 @@ static ALARM_JSON_PATH: Lazy<String> = Lazy::new(|| {
 async fn download_lot(data: web::Json<LotData>) -> HttpResponse {
     let success;
     let message;
-    println!("{:?}",data);
     let lotdata=match get_lotdata(&DB_PATH, &data.lot_name){
         Ok(v)=>{
             success=true;
@@ -48,15 +47,14 @@ async fn download_lot(data: web::Json<LotData>) -> HttpResponse {
         Err(e)=>{
             success=false;
             message=format!("{}",e);
-            (vec![],vec![])
+            vec![]
         }
     };
 
     let response = serde_json::json!({
         "success":success,
         "message":message,
-        "lot_header": lotdata.0,
-        "lot_data": lotdata.1
+        "lot_data": lotdata
     });
 
     HttpResponse::Ok().json(response)
@@ -137,9 +135,7 @@ async fn get_machine_list()->HttpResponse{
 ///グラフデータを返す
 #[post("/get_graphdata")]
 async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpResponse {
-    let mut grid_len_x=0.;
-    let mut grid_len_y=0.;
-    let mut grid_data_initial=GridData{x_min:0,y_min:0,grid_x:0.,grid_y:0.};
+    let grid_data_initial=GridData{x_min:0,y_min:0,grid_x:0.,grid_y:0.,histogram_bin_info:None};
     println!("{:?}",graph_condition);
 
     let (success,message,graph_data,grid_data)=match get_graphdata_from_db(&DB_PATH, &graph_condition){

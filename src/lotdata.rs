@@ -1,73 +1,73 @@
-use rusqlite::{Connection,Result};
+use rusqlite::{Connection,Result,types::{ValueRef,Type}};
+use serde::Serialize;
 
-pub fn get_lotdata(db_path: &str, lot_name: &str) -> Result<(Vec<String>, Vec<Vec<String>>), Box<dyn std::error::Error>> {
+#[derive(Debug,Serialize)]
+pub enum DBData{
+    Num(i32),
+    Str(String),
+    None
+}
+
+pub fn get_lotdata(db_path: &str, lot_name: &str) -> Result<Vec<Vec<DBData>>, Box<dyn std::error::Error>> {
     let db = Connection::open(db_path)?;
-    
-    let mut stmt = db.prepare(
-        "SELECT *
-         FROM chipdata
-         WHERE lot_name = ?",
-    )?;
-    
-    let mut column_names: Vec<String> = stmt.column_names()
-        .iter()
-        .map(|&name| name.to_string())
-        .collect();
-    
-    column_names.drain(..1);
-    column_names.drain(column_names.len()-3..);
-    
-    let mut lot_unit_vec: Vec<Vec<String>> = Vec::new();
-    
-    let rows = stmt.query_map([lot_name], |row| {
+
+    //テーブル一覧を取得
+    let table_list_sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+    let mut table_stmt = db.prepare(table_list_sql)?;
+    let table_names: Vec<String> = table_stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+
+    println!("取得したテーブル一覧: {:?}", table_names);
+
+
+    //各テーブルからデータを取得するためのUNION ALL SQLを生成
+    let mut union_sql_parts = Vec::new();
+    for table_name in &table_names {
+        let sql = format!("SELECT * FROM {} WHERE lot_name='{}'", table_name,lot_name);
+        union_sql_parts.push(sql);
+    }
+
+    //全テーブルのデータを統合
+    //シリアル番号の昇順で並び替える
+    let mut sql = union_sql_parts.join(" UNION ALL ");
+    sql += " ORDER BY SERIAL ASC";
+
+    println!("=== UNION ALL SQL ===");
+    println!("{}", sql);
+    println!("====================");
+
+    let mut stmt=db.prepare(&sql)?;
+
+    let rows = stmt.query_map([], |row| {
         let column_count = row.as_ref().column_count();
         let mut row_data = Vec::new();
-        
-        // serialを先に取得（元のインデックス4）
-        let serial_value: Result<String, _> = row.get(4);
-        let (serial_num, flag) = match serial_value {
-            Ok(v) => {
-                match v.parse::<i32>() {
-                    Ok(s) => (s, true),
-                    Err(_) => (i32::MAX, false)
+
+        for i in 1..column_count {
+            let v = row.get_ref(i)?;
+
+            let value = match v.data_type() {
+                Type::Integer => {
+                    let n: i64 = v.as_i64()?;     // INTEGER は i64
+                    DBData::Num(n as i32)        // i32 に落とすならキャスト
                 }
-            },
-            Err(_) => (i32::MAX, false)
-        };
-        
-        // 全カラムのデータを取得
-        for i in 0..column_count {
-            let value: Result<String, _> = row.get(i);
-            match value {
-                Ok(v) => row_data.push(v),
-                Err(_) => row_data.push(String::new()),
-            }
+                Type::Text => {
+                    let s = v.as_str()?.to_string();
+                    DBData::Str(s)
+                }
+                _ => DBData::None,
+            };
+
+            row_data.push(value);
         }
-        
-        // row_dataの最初の要素と最後の3つの要素を取り除く
-        row_data.drain(..1);
-        row_data.drain(row_data.len()-3..);
-        
-        // flagに関わらず、serial番号とデータのペアを返す
-        Ok((serial_num, flag, row_data))
+
+        Ok(row_data)
     })?;
 
-    // serial番号付きでデータを収集（flagがtrueのものだけ）
-    let mut lot_unit_with_serial: Vec<(i32, Vec<String>)> = Vec::new();
-    for row in rows {
-        let (serial, flag, data) = row?;
-        if flag {
-            lot_unit_with_serial.push((serial, data));
-        }
+    let mut lot_unit_vec = Vec::new();
+    for r in rows {
+        lot_unit_vec.push(r?);
     }
-    
-    // serial番号で昇順にソート
-    lot_unit_with_serial.sort_by_key(|(serial, _)| *serial);
-    
-    // データ部分だけを取り出す
-    lot_unit_vec = lot_unit_with_serial.into_iter()
-        .map(|(_, data)| data)
-        .collect();
-    
-    Ok((column_names, lot_unit_vec))
+
+    Ok(lot_unit_vec)
 }

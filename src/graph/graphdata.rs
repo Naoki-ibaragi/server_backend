@@ -37,7 +37,13 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:&GraphCondition)->Resu
     }
 
     //全テーブルのデータを統合
-    let sql = union_sql_parts.join(" UNION ALL ");
+    let mut sql = union_sql_parts.join(" UNION ALL ");
+
+    // LinePlotの場合はUNION ALL全体に対してORDER BYを追加
+    if graph_condition.graph_type == "LinePlot" {
+        sql += " ORDER BY LD_PICKUP_DATE ASC";
+    }
+
     println!("=== UNION ALL SQL ===");
     println!("{}", sql);
     println!("====================");
@@ -68,14 +74,16 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:&GraphCondition)->Resu
 
     //ここにHighChartsで表示用のデータを全て入れる
     let mut data_map:HashMap<String,Vec<PlotData>>=HashMap::new();
-    let mut grid_data=GridData{grid_x:0.,grid_y:0.,x_min:0,y_min:0};
+    let mut grid_data=GridData{grid_x:0.,grid_y:0.,x_min:0,y_min:0,histogram_bin_info:None};
 
     //グラフ種類ごとにデータを格納
     match graph_condition.plot_unit.as_str() {
         "None" => match graph_condition.graph_type.as_str() {
             "ScatterPlot" => plot_scatterplot_without_unit( total_count, &mut data_map, &mut stmt,&graph_condition)?,
-            "LinePlot" => plot_scatterplot_without_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?,
-            "Histogram" => plot_histogram_without_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?,
+            "LinePlot" => plot_lineplot_without_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?,
+            "Histogram" => {
+                grid_data.histogram_bin_info=Some(plot_histogram_without_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?);
+            }
             "DensityPlot" => {
                 let grid_data:GridData = plot_densityplot_without_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?;
             },
@@ -83,14 +91,16 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:&GraphCondition)->Resu
         },
         _ => match graph_condition.graph_type.as_str() {
             "ScatterPlot" => plot_scatterplot_with_unit(total_count, &mut data_map, &mut stmt,&graph_condition)?,
-            "LinePlot" => plot_scatterplot_with_unit(total_count, &mut data_map, &mut stmt,&graph_condition)?,
-            "Histogram" => plot_histogram_with_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?,
+            "LinePlot" => plot_lineplot_with_unit(total_count, &mut data_map, &mut stmt,&graph_condition)?,
+            "Histogram" => {
+                grid_data.histogram_bin_info=Some(plot_histogram_with_unit(total_count, &mut data_map, &mut stmt, &graph_condition)?);
+            }
             _ => {},
         },
     };
 
     //アラームのプロットを重ねる場合の処理を入れる
-    if !graph_condition.alarm.codes.is_empty(){
+    if !graph_condition.alarm.codes.is_empty() && graph_condition.graph_type!="LinePlot" {
 
         //各テーブルからアラームデータを取得するためのUNION ALL SQLを生成
         let mut alarm_union_sql_parts = Vec::new();
@@ -100,7 +110,12 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:&GraphCondition)->Resu
         }
 
         //全テーブルのアラームデータを統合
-        let sql = alarm_union_sql_parts.join(" UNION ALL ");
+        let mut sql = alarm_union_sql_parts.join(" UNION ALL ");
+
+        // LinePlotの場合はUNION ALL全体に対してORDER BYを追加
+        if graph_condition.graph_type == "LinePlot" {
+            sql += " ORDER BY LD_PICKUP_DATE ASC";
+        }
 
         // --- 件数を先に取得 ---
         let count_sql = format!(
@@ -115,14 +130,20 @@ pub fn get_graphdata_from_db(db_path:&str,graph_condition:&GraphCondition)->Resu
         match graph_condition.plot_unit.as_str() {
             "None" => match graph_condition.graph_type.as_str() { //ユニット毎にデータをまとめない
                 "ScatterPlot" => plot_scatterplot_without_unit_only_alarm_data(total_count, &mut data_map, &mut stmt,&graph_condition)?,
-                "LinePlot" => plot_scatterplot_without_unit_only_alarm_data(total_count, &mut data_map, &mut stmt,&graph_condition)?,
-                "Histogram" => plot_histogram_without_unit_only_alarm_data(total_count, &mut data_map, &mut stmt)?,
+                "Histogram" => {
+                    if let Some(ref bin_info) = grid_data.histogram_bin_info {
+                        plot_histogram_without_unit_only_alarm_data(total_count, &mut data_map, &mut stmt, bin_info)?;
+                    }
+                },
                 _ => {},
             },
             _ => match graph_condition.graph_type.as_str() { //ユニット毎にデータをまとめる
                 "ScatterPlot" => plot_scatterplot_with_unit_only_alarm_data(total_count, &mut data_map, &mut stmt,&graph_condition)?,
-                "LinePlot" => plot_scatterplot_with_unit_only_alarm_data(total_count, &mut data_map, &mut stmt,&graph_condition)?,
-                "Histogram" => plot_histogram_with_unit_only_alarm_data(total_count, &mut data_map, &mut stmt)?,
+                "Histogram" => {
+                    if let Some(ref bin_info) = grid_data.histogram_bin_info {
+                        plot_histogram_with_unit_only_alarm_data(total_count, &mut data_map, &mut stmt, bin_info)?;
+                    }
+                },
                 _ => {},
             },
         };
