@@ -1,18 +1,20 @@
-use actix_web::cookie::time::error;
 use rusqlite::{Connection, Result};
-use std::collections::{HashMap};
-use std::hash::Hash;
+use std::collections::{BTreeMap, HashMap};
 use serde_json;
 use std::{fs};
 use std::error::Error;
 
-use crate::variants::{ChipRecord,AlarmDetail,LotUnitData};
+use crate::variants::{ChipRecord,AlarmDetail,LotUnitData,AlarmCounts};
 
-pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, alarm_json_path:&str) -> Result<(HashMap<String, LotUnitData>,AlarmDetail),Box<dyn Error>> {
+pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, alarm_json_path:&str) -> Result<HashMap<String, LotUnitData>,Box<dyn Error>> {
 
+    //アラームコード一覧をjsonから読み込み
     let s=fs::read_to_string(alarm_json_path)?;
     let alarm_detail:AlarmDetail = serde_json::from_str(&s)?;
+    println!("alarm_detail:{:#?}",alarm_detail);
 
+
+    //対象の装置のテーブル名を取得
     let s=fs::read_to_string(table_json_path)?;
     let table_map:HashMap<String,String> = serde_json::from_str(&s)?;
     let table_name=match table_map.get(machine_name){
@@ -56,6 +58,29 @@ pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, ala
         uld_alarmcode_vec.push(x.parse::<i32>()?)
     }
 
+    //countが全て0の初期状態のAlarmCountsを作成する
+    let mut alarm_count_base=AlarmCounts{
+        ld_alarm:BTreeMap::new(),
+        dc1_alarm:BTreeMap::new(),
+        ac1_alarm:BTreeMap::new(),
+        ac2_alarm:BTreeMap::new(),
+        dc2_alarm:BTreeMap::new(),
+        ip_alarm:BTreeMap::new(),
+        uld_alarm:BTreeMap::new(),
+    };
+
+    AlarmCounts::new(
+        &mut alarm_count_base,
+        ld_alarmcode_vec,
+        dc1_alarmcode_vec,
+        ac1_alarmcode_vec,
+        ac2_alarmcode_vec,
+        dc2_alarmcode_vec,
+        ip_alarmcode_vec,
+        uld_alarmcode_vec,
+    );
+
+    //dbに接続
     let db = Connection::open(db_path)?;
 
     let sql=format!("SELECT machine_name,type_name,lot_name,ld_pickup_date,uld_put_date,
@@ -64,9 +89,11 @@ pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, ala
     let mut stmt = db.prepare(&sql)?;
 
     // lot_name をキーに LotUnitData を格納
-    let mut return_hashmap: HashMap<String, LotUnitData> = HashMap::new();
+    //このhasmapを最後にreturnする
+    let mut all_lots_hashmap: HashMap<String, LotUnitData> = HashMap::new();
 
-    let chip_iter = stmt.query_map([], |row| {
+    //テーブル内の全レコードを取得
+    let chip_iter:Vec<ChipRecord> = stmt.query_map([], |row| {
         Ok(ChipRecord {
             machine_name: row.get(0)?,
             type_name: row.get(1)?,
@@ -81,23 +108,24 @@ pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, ala
             ip_alarm: row.get(10)?,
             uld_alarm: row.get(11)?,
         })
-    })?;
+    })?
+    .filter_map(|chip| chip.ok())
+    .collect();
 
     for chip in chip_iter {
-        let chip = chip?;
         let lot_name = match chip.lot_name.clone(){
             Some(s)=>s.to_string(),
-            None=>String::from("")
+            None=>continue
         };
 
         let machine_name = match chip.machine_name.clone(){
             Some(s)=>s.to_string(),
-            None=>String::from("")
+            None=>continue
         };
 
         let type_name = match chip.type_name.clone(){
             Some(s)=>s.to_string(),
-            None=>String::from("")
+            None=>continue
         };
 
         let ld_pickup_date = match chip.ld_pickup_date.clone(){
@@ -110,106 +138,83 @@ pub fn get_alarmdata(db_path: &str, table_json_path:&str,machine_name: &str, ala
         };
 
         // HashMapにキーが無ければ新規作成
-        let lot_entry = return_hashmap
+        let lot_entry = all_lots_hashmap
             .entry(lot_name.clone())
             .or_insert_with(|| {
-                LotUnitData::new(
-                    &machine_name,
-                    &type_name,
-                    &ld_pickup_date,
-                    &uld_put_date,
-                    ld_alarmcode_vec.clone(),
-                    dc1_alarmcode_vec.clone(),
-                    ac1_alarmcode_vec.clone(),
-                    ac2_alarmcode_vec.clone(),
-                    dc2_alarmcode_vec.clone(),
-                    ip_alarmcode_vec.clone(),
-                    uld_alarmcode_vec.clone(),
-                )
+                LotUnitData{
+                    machine_name:machine_name.clone(),
+                    type_name:type_name.clone(),
+                    lot_start_time:ld_pickup_date.clone(),
+                    lot_end_time:uld_put_date.clone(),
+                    alarm_counts:alarm_count_base.clone()
+                }
             });
 
         // lot_start_time / lot_end_time を更新
         lot_entry.check_date(&ld_pickup_date,&uld_put_date);
 
-        // 例: 各アラームの非空文字列をカウントに追加（必要に応じて拡張）
+        //各アラームをカウント
         match chip.ld_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .ld_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.ld_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
+        };
 
         match chip.dc1_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .dc1_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.dc1_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
+        };
 
         match chip.ac1_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .ac1_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.ac1_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
-
+        };
         match chip.ac2_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .ac2_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.ac2_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
-
+        };
         match chip.dc2_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .dc2_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.dc2_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
-
+        };
         match chip.ip_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .ip_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.ip_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
-
+        };
         match chip.uld_alarm{
             Some(s)=>{
-                *lot_entry
-                .alarm_list
-                .uld_alarm
-                .entry(s.clone())
-                .or_insert(0) += 1;
+                if let Some(v)=lot_entry.alarm_counts.uld_alarm.get_mut(&s){
+                    *v+=1;
+                };
             },
             None=>{}
-        }
+        };
+
     }
 
-    Ok((return_hashmap,alarm_detail))
+    Ok(all_lots_hashmap)
 }
 

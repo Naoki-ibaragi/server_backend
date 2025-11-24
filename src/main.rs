@@ -74,26 +74,14 @@ async fn download_alarm(data: web::Json<MachineData>) -> HttpResponse {
         Err(e)=>{
             success=false;
             message=format!("{}",e);
-            (
-                HashMap::new(),
-                AlarmDetail {
-                    ld_alarm: HashMap::new(),
-                    dc1_alarm: HashMap::new(),
-                    ac1_alarm: HashMap::new(),
-                    ac2_alarm: HashMap::new(),
-                    dc2_alarm: HashMap::new(),
-                    ip_alarm: HashMap::new(),
-                    uld_alarm: HashMap::new(),
-                }
-            )
+            HashMap::new()
         }
     };
 
     let response = serde_json::json!({
         "success":success,
         "message":message,
-        "alarm_data": lotdata.0,
-        "alarm_header": lotdata.1
+        "alarm_data": lotdata,
     });
 
     HttpResponse::Ok().json(response)

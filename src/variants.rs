@@ -30,7 +30,7 @@ pub struct ChipRecord {
     pub uld_alarm: Option<i32>,
 }
 
-#[derive(Debug,Serialize)]
+#[derive(Debug,Serialize,Clone)]
 pub struct AlarmCounts {
     pub ld_alarm: BTreeMap<i32, u32>,
     pub dc1_alarm: BTreeMap<i32, u32>,
@@ -41,31 +41,35 @@ pub struct AlarmCounts {
     pub uld_alarm: BTreeMap<i32, u32>,
 }
 
-impl AlarmCounts {
-    pub fn new(
-        ld_keys:Vec<i32>,
-        dc1_keys:Vec<i32>,
-        ac1_keys:Vec<i32>,
-        ac2_keys:Vec<i32>,
-        dc2_keys:Vec<i32>,
-        ip_keys:Vec<i32>,
-        uld_keys:Vec<i32>,
-    ) -> Self {
-        let ld_map:BTreeMap<i32,u32>=ld_keys.into_iter().map(|k| (k,0)).collect();
-        let dc1_map:BTreeMap<i32,u32>=dc1_keys.into_iter().map(|k| (k,0)).collect();
-        let ac1_map:BTreeMap<i32,u32>=ac1_keys.into_iter().map(|k| (k,0)).collect();
-        let ac2_map:BTreeMap<i32,u32>=ac2_keys.into_iter().map(|k| (k,0)).collect();
-        let dc2_map:BTreeMap<i32,u32>=dc2_keys.into_iter().map(|k| (k,0)).collect();
-        let ip_map:BTreeMap<i32,u32>=ip_keys.into_iter().map(|k| (k,0)).collect();
-        let uld_map:BTreeMap<i32,u32>=uld_keys.into_iter().map(|k| (k,0)).collect();
-        AlarmCounts {
-            ld_alarm: ld_map,
-            dc1_alarm: dc1_map,
-            ac1_alarm: ac1_map,
-            ac2_alarm: ac2_map,
-            dc2_alarm: dc2_map,
-            ip_alarm: ip_map,
-            uld_alarm: uld_map,
+impl AlarmCounts{
+    pub fn new(&mut self,ld_vec:Vec<i32>,dc1_vec:Vec<i32>,ac1_vec:Vec<i32>,ac2_vec:Vec<i32>,dc2_vec:Vec<i32>,ip_vec:Vec<i32>,uld_vec:Vec<i32>){
+        //ld部分作成
+        for key in ld_vec{
+            self.ld_alarm.entry(key).or_insert(0);
+        }
+        //dc1部分作成
+        for key in dc1_vec{
+            self.dc1_alarm.entry(key).or_insert(0);
+        }
+        //ac1部分作成
+        for key in ac1_vec{
+            self.ac1_alarm.entry(key).or_insert(0);
+        }
+        //ac2部分作成
+        for key in ac2_vec{
+            self.ac2_alarm.entry(key).or_insert(0);
+        }
+        //dc2部分作成
+        for key in dc2_vec{
+            self.dc2_alarm.entry(key).or_insert(0);
+        }
+        //ip部分作成
+        for key in ip_vec{
+            self.ip_alarm.entry(key).or_insert(0);
+        }
+        //uld部分作成
+        for key in uld_vec{
+            self.uld_alarm.entry(key).or_insert(0);
         }
     }
 }
@@ -87,39 +91,10 @@ pub struct LotUnitData {
     pub type_name: String,
     pub lot_start_time: String,
     pub lot_end_time: String,
-    pub alarm_list: AlarmCounts,
+    pub alarm_counts: AlarmCounts,
 }
 
 impl LotUnitData {
-    pub fn new(machine_name: &str, 
-        type_name: &str, 
-        lot_start_time: &str, 
-        lot_end_time: &str,
-        ld_alarm_vec:Vec<i32>,
-        dc1_alarm_vec:Vec<i32>,
-        ac1_alarm_vec:Vec<i32>,
-        ac2_alarm_vec:Vec<i32>,
-        dc2_alarm_vec:Vec<i32>,
-        ip_alarm_vec:Vec<i32>,
-        uld_alarm_vec:Vec<i32>
-        ) -> Self {
-        LotUnitData {
-            machine_name: machine_name.to_string(),
-            type_name: type_name.to_string(),
-            lot_start_time: lot_start_time.to_string(),
-            lot_end_time: lot_end_time.to_string(),
-            alarm_list: AlarmCounts::new(
-                ld_alarm_vec.clone(),
-                dc1_alarm_vec.clone(),
-                ac1_alarm_vec.clone(),
-                ac2_alarm_vec.clone(),
-                dc2_alarm_vec.clone(),
-                ip_alarm_vec.clone(),
-                uld_alarm_vec.clone()
-            ),
-        }
-    }
-
     pub fn check_date(&mut self, ld_time: &str,uld_time:&str) {
         if self.lot_start_time.is_empty(){
             self.lot_start_time=ld_time.to_string();
