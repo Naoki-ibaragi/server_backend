@@ -1,32 +1,28 @@
-use rusqlite::{Statement};
+use sqlx::{PgPool, Row};
 use std::error::Error;
 use std::collections::HashMap;
 
 use crate::graph::variants::*;
 
 //プロット分割しない散布図のデータを取得
-pub fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    let query_rows: Vec<(XdimData,i32)> = stmt.query_map([], |row| {
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
+
+    println!("query_rows collected: {} rows", rows_data.len());
+
+    let rows = data_map.get_mut("data").unwrap();
+    for row in rows_data {
         let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
-            XdimData::StringData(row.get(0)?)
+            XdimData::StringData(row.try_get(0)?)
         }else{
-            XdimData::NumberData(row.get(0)?)
+            XdimData::NumberData(row.try_get(0)?)
         };
-        let y_value: i32 = row.get(1)?;
-        Ok((x_value,y_value))
-    })?
-    .filter_map(|r| r.ok())
-    .collect();
-
-    println!("query_rows collected: {} rows", query_rows.len());
-
-    // 最初に全ての行をカウント（オプション：パフォーマンスが心配な場合は別途COUNT(*)で取得）
-    // 以下のコードでは処理しながら報告していく方式を使用
-    let rows= data_map.get_mut("data").unwrap();
-    for (_index,record) in query_rows.into_iter().enumerate(){
-        rows.push(PlotData::Scatter(ScatterPlotData{x_data:record.0,y_data:record.1}));
+        let y_value: i32 = row.try_get(1)?;
+        rows.push(PlotData::Scatter(ScatterPlotData{x_data:x_value,y_data:y_value}));
     }
 
     println!("Final data_map size: {}", rows.len());
@@ -35,23 +31,21 @@ pub fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap<Strin
 }
 
 //プロット分割する散布図のデータを取得
-pub fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
-    let query_rows: Vec<(String,XdimData,i32)> = stmt.query_map([], |row| {
-        let unit_name: String=row.get(0)?;
-        let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
-            XdimData::StringData(row.get(1)?)
-        }else{
-            XdimData::NumberData(row.get(1)?)
-        };
-        let y_value: i32 = row.get(2)?;
-        Ok((unit_name,x_value, y_value))
-    })?
-    .filter_map(|r| r.ok())
-    .collect();
+pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
 
-    for (index, record) in query_rows.into_iter().enumerate(){
-        data_map.entry(record.0).or_insert(vec![]).push(
-            PlotData::Scatter(ScatterPlotData{x_data:record.1, y_data:record.2})
+    for row in rows_data {
+        let unit_name: String = row.try_get(0)?;
+        let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+            XdimData::StringData(row.try_get(1)?)
+        }else{
+            XdimData::NumberData(row.try_get(1)?)
+        };
+        let y_value: i32 = row.try_get(2)?;
+        data_map.entry(unit_name).or_insert(vec![]).push(
+            PlotData::Scatter(ScatterPlotData{x_data:x_value, y_data:y_value})
         );
     }
     Ok(())
@@ -59,112 +53,81 @@ pub fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<String,V
 
 //プロット分割しない折れ線グラフ(時系列プロット)のデータを取得
 //LD_PICKUP_DATEでORDERされた状態でデータ取得済
-pub fn plot_lineplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+pub async fn plot_lineplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
     data_map.entry("data".to_string()).or_insert(vec![]);
 
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
+
+    println!("query_rows collected: {} rows", rows_data.len());
+
+    let rows = data_map.get_mut("data").unwrap();
+
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
-        let query_rows: Vec<i32> = stmt.query_map([], |row| {
-            let y_value: i32 = row.get(1)?;
-            Ok(y_value)
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-        println!("query_rows collected: {} rows", query_rows.len());
-
-        // 最初に全ての行をカウント（オプション：パフォーマンスが心配な場合は別途COUNT(*)で取得）
-        // 以下のコードでは処理しながら報告していく方式を使用
-        let rows= data_map.get_mut("data").unwrap();
-        for (_index,record) in query_rows.into_iter().enumerate(){
-            rows.push(PlotData::Line(LinePlotData{y_data:record,is_alarm:false}));
+        for row in rows_data {
+            let y_value: i32 = row.try_get(1)?;
+            rows.push(PlotData::Line(LinePlotData{y_data:y_value,is_alarm:false}));
         }
-
-        println!("Final data_map size: {}", rows.len());
-
-        Ok(())
     }else{
         let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
-        let query_rows: Vec<(i32,bool)> = stmt.query_map([], |row| {
-            let y_value: i32 = row.get(1)?;
-            let alarm_value:i32=row.get(2)?;
-            if target_alarm_code.contains(&alarm_value){
-                Ok((y_value,true))
-            }else{
-                Ok((y_value,false))
-            }
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-        println!("query_rows collected: {} rows", query_rows.len());
-
-        // 最初に全ての行をカウント（オプション：パフォーマンスが心配な場合は別途COUNT(*)で取得）
-        // 以下のコードでは処理しながら報告していく方式を使用
-        let rows= data_map.get_mut("data").unwrap();
-        for (_index,record) in query_rows.into_iter().enumerate(){
-            rows.push(PlotData::Line(LinePlotData{y_data:record.0,is_alarm:record.1}));
+        for row in rows_data {
+            let y_value: i32 = row.try_get(1)?;
+            let alarm_value: i32 = row.try_get(2)?;
+            let is_alarm = target_alarm_code.contains(&alarm_value);
+            rows.push(PlotData::Line(LinePlotData{y_data:y_value,is_alarm}));
         }
-
-        println!("Final data_map size: {}", rows.len());
-
-        Ok(())
     }
+
+    println!("Final data_map size: {}", rows.len());
+
+    Ok(())
 }
 
-//プロット分割する散布図のデータを取得
-pub fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+//プロット分割する折れ線グラフのデータを取得
+pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
 
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
-        let query_rows: Vec<(String,i32)> = stmt.query_map([], |row| {
-            let unit: String = row.get(0)?;
-            let y_value: i32 = row.get(2)?;
-            Ok((unit,y_value))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-        for (index, record) in query_rows.into_iter().enumerate(){
-            data_map.entry(record.0).or_insert(vec![]).push(
-                PlotData::Line(LinePlotData{y_data:record.1,is_alarm:false})
+        for row in rows_data {
+            let unit: String = row.try_get(0)?;
+            let y_value: i32 = row.try_get(2)?;
+            data_map.entry(unit).or_insert(vec![]).push(
+                PlotData::Line(LinePlotData{y_data:y_value,is_alarm:false})
             );
         }
-        Ok(())
     }else{
         let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
-        let query_rows: Vec<(String,i32,bool)> = stmt.query_map([], |row| {
-            let unit: String = row.get(0)?;
-            let y_value: i32 = row.get(2)?;
-            let alarm_value:i32=row.get(3)?;
-            if target_alarm_code.contains(&alarm_value){
-                Ok((unit,y_value,true))
-            }else{
-                Ok((unit,y_value,false))
-            }
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-        for (index, record) in query_rows.into_iter().enumerate(){
-            data_map.entry(record.0).or_insert(vec![]).push(
-                PlotData::Line(LinePlotData{y_data:record.1,is_alarm:record.2})
+        for row in rows_data {
+            let unit: String = row.try_get(0)?;
+            let y_value: i32 = row.try_get(2)?;
+            let alarm_value: i32 = row.try_get(3)?;
+            let is_alarm = target_alarm_code.contains(&alarm_value);
+            data_map.entry(unit).or_insert(vec![]).push(
+                PlotData::Line(LinePlotData{y_data:y_value,is_alarm})
             );
         }
-        Ok(())
     }
+    Ok(())
 }
 
 /* Heatmap(Histogram) */
-//プロット分割しないヒストグラムータを取得
-pub fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
+//プロット分割しないヒストグラムのデータを取得
+pub async fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
     //dataキーに値を入れる
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    let query_rows: Vec<i32> = stmt.query_map([], |row| {
-        let x_value: i32 = row.get(0)?;
-        Ok(x_value)
-    })?
-    .filter_map(|r| r.ok())
-    .collect();
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
+
+    let mut query_rows: Vec<i32> = Vec::new();
+    for row in rows_data {
+        let x_value: i32 = row.try_get(0)?;
+        query_rows.push(x_value);
+    }
 
     if query_rows.is_empty(){
         return Ok(HistogramBinInfo{
@@ -213,14 +176,17 @@ pub fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<String
 }
 
 //プロット分割するヒストグラムのデータを取得
-pub fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
-    let query_rows: Vec<(String,i32)> = stmt.query_map([], |row| {
-        let unit_name: String=row.get(0)?;
-        let x_value: i32 = row.get(1)?;
-        Ok((unit_name,x_value))
-    })?
-    .filter_map(|r| r.ok())
-    .collect();
+pub async fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
+
+    let mut query_rows: Vec<(String,i32)> = Vec::new();
+    for row in rows_data {
+        let unit_name: String = row.try_get(0)?;
+        let x_value: i32 = row.try_get(1)?;
+        query_rows.push((unit_name, x_value));
+    }
 
     if query_rows.is_empty(){
         return Ok(HistogramBinInfo{
@@ -229,7 +195,7 @@ pub fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<String,Ve
         });
     }
 
-    // 全データの最小値と最大値を取得（全ユニットで同じビンを使用）
+    // 全データの最小値と最大値を取得(全ユニットで同じビンを使用)
     let x_min = *query_rows.iter().map(|(_, v)| v).min().unwrap();
     let x_max = *query_rows.iter().map(|(_, v)| v).max().unwrap();
 
@@ -279,29 +245,29 @@ pub fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<String,Ve
 
 /* Heatmap(DensityPlot) */
 //プロット分割しない密度プロットのデータを取得
-pub fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,stmt:&mut Statement,graph_condition:&GraphCondition)->Result<GridData,Box<dyn Error>>{
+pub async fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<GridData,Box<dyn Error>>{
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    //格格幅を決めるためにx,yのmax,minを出す
+    let rows_data = sqlx::query(sql)
+        .fetch_all(pool)
+        .await?;
+
+    //格子幅を決めるためにx,yのmax,minを出す
     let mut x_min=i32::MAX;
     let mut x_max=i32::MIN;
     let mut y_min=i32::MAX;
     let mut y_max=i32::MIN;
 
-    let query_rows: Vec<(i32, i32)> = stmt.query_map([], |row| {
-    let x_value: i32 = row.get(0)?;
-    let y_value: i32 = row.get(1)?;
-    Ok((x_value, y_value))
-    })?
-    .filter_map(|r| {
-        let (x_val, y_val) = r.ok()?;
-        if x_val < x_min { x_min = x_val; }
-        if x_val > x_max { x_max = x_val; }
-        if y_val < y_min { y_min = y_val; }
-        if y_val > y_max { y_max = y_val; }
-        Some((x_val, y_val))
-    })
-    .collect();
+    let mut query_rows: Vec<(i32, i32)> = Vec::new();
+    for row in rows_data {
+        let x_value: i32 = row.try_get(0)?;
+        let y_value: i32 = row.try_get(1)?;
+        if x_value < x_min { x_min = x_value; }
+        if x_value > x_max { x_max = x_value; }
+        if y_value < y_min { y_min = y_value; }
+        if y_value > y_max { y_max = y_value; }
+        query_rows.push((x_value, y_value));
+    }
 
     //グリッド幅を計算
     let grid_len_x=(x_max as f64-x_min as f64)/graph_condition.bins_x as f64;
@@ -310,14 +276,13 @@ pub fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap<Strin
     //グリッド毎の数量を初期化
     let mut arr = vec![vec![0; graph_condition.bins_y as usize]; graph_condition.bins_x as usize];
 
-    for (index, (x_val, y_val)) in query_rows.iter().enumerate() {
+    for (x_val, y_val) in query_rows.iter() {
         let grid_num_x = (((x_val - x_min) as f64 / grid_len_x) as usize)
             .min(graph_condition.bins_x as usize - 1);
         let grid_num_y = (((y_val - y_min) as f64 / grid_len_y) as usize)
             .min(graph_condition.bins_y as usize - 1);
 
         arr[grid_num_x][grid_num_y] += 1;
-
     }
 
     //HashmapにVec<PlotData>でまとめる
@@ -330,4 +295,3 @@ pub fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap<Strin
 
     Ok(GridData { grid_x: grid_len_x, grid_y: grid_len_y, x_min: x_min, y_min: y_min, histogram_bin_info: None })
 }
-

@@ -1,73 +1,84 @@
-use rusqlite::{Connection,Result,types::{ValueRef,Type}};
+use sqlx::{PgPool, Row,Column};
 use serde::Serialize;
+use chrono;
 
-#[derive(Debug,Serialize)]
-pub enum DBData{
+#[derive(Debug, Serialize)]
+pub enum DBData {
     Num(i32),
     Str(String),
     None
 }
 
-pub fn get_lotdata(db_path: &str, lot_name: &str) -> Result<Vec<Vec<DBData>>, Box<dyn std::error::Error>> {
-    let db = Connection::open(db_path)?;
+pub async fn get_lotdata(database_url:&str,lot_name: &str) -> Result<Vec<Vec<DBData>>, Box<dyn std::error::Error>> {
+    // PostgreSQL接続
+    let pool = PgPool::connect(database_url).await?;
 
-    //テーブル一覧を取得
-    let table_list_sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
-    let mut table_stmt = db.prepare(table_list_sql)?;
-    let table_names: Vec<String> = table_stmt
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<String>, _>>()?;
+    //最初にlotdateテーブルからロットのstart_timeとend_timeを取得
+    let sql="SELECT start_date, end_date FROM lotdate WHERE lot_name = $1";
+    let metadata = sqlx::query(sql).bind(lot_name)
+    .fetch_one(&pool).await?;
 
-    println!("取得したテーブル一覧: {:?}", table_names);
+    let start_date: chrono::NaiveDateTime = metadata.try_get("start_date")?;
+    let end_date: chrono::NaiveDateTime = metadata.try_get("end_date")?;
 
+    // PostgreSQLではパーティションテーブルCHIPDATAを直接クエリ可能
+    // シリアル番号の昇順で並び替える
+    let sql = "SELECT * FROM CHIPDATA WHERE lot_name = $1 AND ld_pickup_date BETWEEN $2 AND $3 ORDER BY serial ASC";
 
-    //各テーブルからデータを取得するためのUNION ALL SQLを生成
-    let mut union_sql_parts = Vec::new();
-    for table_name in &table_names {
-        let sql = format!("SELECT * FROM {} WHERE lot_name='{}'", table_name,lot_name);
-        union_sql_parts.push(sql);
-    }
-
-    //全テーブルのデータを統合
-    //シリアル番号の昇順で並び替える
-    let mut sql = union_sql_parts.join(" UNION ALL ");
-    sql += " ORDER BY SERIAL ASC";
-
-    println!("=== UNION ALL SQL ===");
+    println!("=== SQL ===");
     println!("{}", sql);
-    println!("====================");
+    println!("lot_name: {}", lot_name);
+    println!("===========");
 
-    let mut stmt=db.prepare(&sql)?;
+    let rows = sqlx::query(sql)
+        .bind(lot_name).bind(start_date).bind(end_date)
+        .fetch_all(&pool)
+        .await?;
 
-    let rows = stmt.query_map([], |row| {
-        let column_count = row.as_ref().column_count();
+    let mut lot_unit_vec = Vec::new();
+
+    for row in rows {
+        let column_count = row.len();
         let mut row_data = Vec::new();
 
+        // カラムインデックス1から開始(id列をスキップ)
         for i in 1..column_count {
-            let v = row.get_ref(i)?;
+            let column = &row.columns()[i];
+            let column_name = column.name();
 
-            let value = match v.data_type() {
-                Type::Integer => {
-                    let n: i64 = v.as_i64()?;     // INTEGER は i64
-                    DBData::Num(n as i32)        // i32 に落とすならキャスト
+            // 型に応じてデータを取得
+            let value = if let Ok(v) = row.try_get::<i32, _>(i) {
+                DBData::Num(v)
+            } else if let Ok(v) = row.try_get::<String, _>(i) {
+                DBData::Str(v)
+            } else if let Ok(v) = row.try_get::<Option<i32>, _>(i) {
+                match v {
+                    Some(n) => DBData::Num(n),
+                    None => DBData::None,
                 }
-                Type::Text => {
-                    let s = v.as_str()?.to_string();
-                    DBData::Str(s)
+            } else if let Ok(v) = row.try_get::<Option<String>, _>(i) {
+                match v {
+                    Some(s) => DBData::Str(s),
+                    None => DBData::None,
                 }
-                _ => DBData::None,
+            } else if let Ok(v) = row.try_get::<Option<chrono::NaiveDateTime>, _>(i) {
+                match v {
+                    Some(dt) => DBData::Str(dt.format("%Y-%m-%d %H:%M:%S").to_string()),
+                    None => DBData::None,
+                }
+            } else {
+                // その他の型はNoneとして扱う
+                println!("Unknown type for column: {}", column_name);
+                DBData::None
             };
 
             row_data.push(value);
         }
 
-        Ok(row_data)
-    })?;
-
-    let mut lot_unit_vec = Vec::new();
-    for r in rows {
-        lot_unit_vec.push(r?);
+        lot_unit_vec.push(row_data);
     }
+
+    pool.close().await;
 
     Ok(lot_unit_vec)
 }

@@ -10,7 +10,9 @@ pub struct LotData{
 
 #[derive(Debug,Deserialize)]
 pub struct MachineData{
-    pub machine_name:String,
+    pub machine_id:i32,
+    pub start_date:String,
+    pub end_date:String,
 }
 
 /* アラームデータ取得関係の構造体 */
@@ -19,8 +21,6 @@ pub struct ChipRecord {
     pub machine_name: Option<String>,
     pub type_name: Option<String>,
     pub lot_name: Option<String>,
-    pub ld_pickup_date: Option<String>,
-    pub uld_put_date: Option<String>,
     pub ld_alarm: Option<i32>,
     pub dc1_alarm: Option<i32>,
     pub ac1_alarm: Option<i32>,
@@ -87,7 +87,7 @@ pub struct AlarmDetail{
 
 #[derive(Debug,Serialize)]
 pub struct LotUnitData {
-    pub machine_name: String,
+    pub machine_id: i32,
     pub type_name: String,
     pub lot_start_time: String,
     pub lot_end_time: String,

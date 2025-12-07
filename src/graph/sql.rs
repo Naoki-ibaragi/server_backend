@@ -1,7 +1,7 @@
-use crate::graph::variants::*;
+use crate::graph::{self, variants::*};
 
 // グラフ条件から適切なSQL文を作成
-pub fn create_sql(graph_condition: &GraphCondition, table_name: &str) -> String {
+pub fn create_sql(graph_condition: &GraphCondition) -> String {
     let mut sql = String::from("SELECT ");
 
     // X, Yデータ取得
@@ -9,87 +9,63 @@ pub fn create_sql(graph_condition: &GraphCondition, table_name: &str) -> String 
         //プロット単位をまとめるかどうかで決める
         if graph_condition.plot_unit=="None" {
             sql += &format!(
-                "{}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {} FROM chipdata",
                 graph_condition.graph_x_item,
                 graph_condition.graph_y_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }else{
             sql += &format!(
-                "{}, {}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {}, {} FROM chipdata",
                 graph_condition.plot_unit,
                 graph_condition.graph_x_item,
                 graph_condition.graph_y_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }
     }else if graph_condition.graph_type=="Histogram"{
         //プロット単位をまとめるかどうかで決める
         if graph_condition.plot_unit=="None" {
             sql += &format!(
-                "{} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{} FROM chipdata",
                 graph_condition.graph_x_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }else{
             sql += &format!(
-                "{}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {} FROM chipdata",
                 graph_condition.plot_unit,
                 graph_condition.graph_x_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }
     }else if graph_condition.graph_type=="LinePlot"{ //時系列プロットの場合はx軸は必ずLD_PICKUP_DATEをとり、アラームが設定されていればそれも取る
         if graph_condition.alarm.codes.is_empty(){ //アラームプロットを重ねない場合
             if graph_condition.plot_unit=="None" {
                 sql += &format!(
-                    "{}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                    "{}, {} FROM chipdata",
                     "LD_PICKUP_DATE",
                     graph_condition.graph_y_item,
-                    table_name,
-                    graph_condition.start_date,
-                    graph_condition.end_date
                 );
             }else{
                 sql += &format!(
-                    "{}, {}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                    "{}, {}, {} FROM chipdata",
                     graph_condition.plot_unit,
                     "LD_PICKUP_DATE",
                     graph_condition.graph_y_item,
-                    table_name,
-                    graph_condition.start_date,
-                    graph_condition.end_date
                 );
             }
         }else{//アラームプロットを重ねる場合
             if graph_condition.plot_unit=="None" {
                 sql += &format!(
-                    "{}, {}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                    "{}, {}, {} FROM chipdata",
                     "LD_PICKUP_DATE",
                     graph_condition.graph_y_item,
                     graph_condition.alarm.unit.clone()+"_ALARM",
-                    table_name,
-                    graph_condition.start_date,
-                    graph_condition.end_date
                 );
             }else{
                 sql += &format!(
-                    "{}, {}, {}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                    "{}, {}, {}, {} FROM chipdata",
                     graph_condition.plot_unit,
                     "LD_PICKUP_DATE",
                     graph_condition.graph_y_item,
                     graph_condition.alarm.unit.clone()+"_ALARM",
-                    table_name,
-                    graph_condition.start_date,
-                    graph_condition.end_date
                 );
             }
         }
@@ -97,7 +73,7 @@ pub fn create_sql(graph_condition: &GraphCondition, table_name: &str) -> String 
 
     // フィルター情報追加
     if !graph_condition.filters.is_empty() {
-        sql += " AND ";
+        sql += " WHERE ";
         for (index, filter) in graph_condition.filters.iter().enumerate() {
             let item = &filter.item;
             let value = &filter.value;
@@ -115,7 +91,13 @@ pub fn create_sql(graph_condition: &GraphCondition, table_name: &str) -> String 
                 sql += &format!(" {} ", graph_condition.filter_conjunction);
             }
         }
+        //パーティション情報追加
+        sql+=&format!(" AND ld_pickup_date BETWEEN '{}' AND '{}'",graph_condition.start_date,graph_condition.end_date);
+    } else {
+        //パーティション情報追加
+        sql+=&format!(" WHERE ld_pickup_date BETWEEN '{}' AND '{}'",graph_condition.start_date,graph_condition.end_date);
     }
+
 
     println!("{}",sql);
 
@@ -123,7 +105,7 @@ pub fn create_sql(graph_condition: &GraphCondition, table_name: &str) -> String 
 }
 
 // アラーム条件にあうレコードのみ取得すようなSQL文を作成
-pub fn create_alarm_sql(graph_condition: &GraphCondition, table_name: &str) -> String {
+pub fn create_alarm_sql(graph_condition: &GraphCondition) -> String {
     let mut sql = String::from("SELECT ");
 
     // プロットデータ取得用のSQLを定義
@@ -131,71 +113,53 @@ pub fn create_alarm_sql(graph_condition: &GraphCondition, table_name: &str) -> S
         //LinePlotの場合はx軸は必ずLD_PICKUP_DATE
         if graph_condition.plot_unit=="None" {
             sql += &format!(
-                "{}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {} FROM chipdata",
                 "LD_PICKUP_DATE",
                 graph_condition.graph_y_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }else{
             sql += &format!(
-                "{}, {}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {}, {} FROM chipdata",
                 graph_condition.plot_unit,
                 "LD_PICKUP_DATE",
                 graph_condition.graph_y_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }
     }else if graph_condition.graph_type=="ScatterPlot" || graph_condition.graph_type=="DensityPlot" {
         //プロット単位をまとめるかどうかで決める
         if graph_condition.plot_unit=="None" {
             sql += &format!(
-                "{}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {} FROM chipdata",
                 graph_condition.graph_x_item,
                 graph_condition.graph_y_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }else{
             sql += &format!(
-                "{}, {}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {}, {} FROM chipdata",
                 graph_condition.plot_unit,
                 graph_condition.graph_x_item,
                 graph_condition.graph_y_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }
     }else if graph_condition.graph_type=="Histogram"{
         //プロット単位をまとめるかどうかで決める
         if graph_condition.plot_unit=="None" {
             sql += &format!(
-                "{} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{} FROM chipdata",
                 graph_condition.graph_x_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }else{
             sql += &format!(
-                "{}, {} FROM {} WHERE LD_PICKUP_DATE > '{}' AND ULD_PUT_DATE < '{}'",
+                "{}, {} FROM chipdata",
                 graph_condition.plot_unit,
                 graph_condition.graph_x_item,
-                table_name,
-                graph_condition.start_date,
-                graph_condition.end_date
             );
         }
 
     }
 
     //アラームフィルター追加
-    sql+=" AND ";
+    sql+=" WHERE ";
     let alarm_column=format!("{}_ALARM",graph_condition.alarm.unit);
     for alarm_code in graph_condition.alarm.codes.iter(){
         sql += &format!("{} {} '{}'",alarm_column,"=",alarm_code);
@@ -217,6 +181,9 @@ pub fn create_alarm_sql(graph_condition: &GraphCondition, table_name: &str) -> S
             }
         }
     }
+
+    //パーティション情報追加
+    sql+=&format!(" AND ld_pickup_date BETWEEN '{}' AND '{}'",graph_condition.start_date,graph_condition.end_date);
 
     println!("{}",sql);
 

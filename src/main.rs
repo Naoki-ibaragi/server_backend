@@ -18,13 +18,8 @@ mod alarmdata;
 mod variants;
 mod graph;
 
-// グローバル設定
-static DB_PATH: Lazy<String> = Lazy::new(|| {
-    env::var("DB_PATH").unwrap_or("C:\\chiptest.db".to_string())
-});
-
-static DB_TABLE_JSON_PATH: Lazy<String> = Lazy::new(|| {
-    env::var("DB_TABLE_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\dbtable.json".to_string())
+static DB_URL: Lazy<String> = Lazy::new(|| {
+    env::var("DB_URL").unwrap_or("postgresql://postgres:password@localhost:5432/chiptest".to_string())
 });
 
 static ALARM_JSON_PATH: Lazy<String> = Lazy::new(|| {
@@ -38,7 +33,7 @@ static ALARM_JSON_PATH: Lazy<String> = Lazy::new(|| {
 async fn download_lot(data: web::Json<LotData>) -> HttpResponse {
     let success;
     let message;
-    let lotdata=match get_lotdata(&DB_PATH, &data.lot_name){
+    let lotdata=match get_lotdata(&DB_URL,&data.lot_name).await{
         Ok(v)=>{
             success=true;
             message="success!".to_string();
@@ -65,7 +60,8 @@ async fn download_alarm(data: web::Json<MachineData>) -> HttpResponse {
     let success;
     let message;
     println!("{:?}",data);
-    let lotdata=match get_alarmdata(&DB_PATH, &DB_TABLE_JSON_PATH,&data.machine_name,&ALARM_JSON_PATH){
+    println!("ALARM_JSON_PATH: {}", &*ALARM_JSON_PATH);
+    let lotdata=match get_alarmdata(&DB_URL, &ALARM_JSON_PATH,data.machine_id,&data.start_date,&data.end_date).await{
         Ok(v)=>{
             success=true;
             message="success!".to_string();
@@ -89,31 +85,11 @@ async fn download_alarm(data: web::Json<MachineData>) -> HttpResponse {
 
 #[post("/get_machine_list")]
 async fn get_machine_list()->HttpResponse{
-    let s=match fs::read_to_string(&*DB_TABLE_JSON_PATH){
-        Ok(s)=>s,
-        Err(e)=>{
-            "{}".to_string()
-        }
-    };
-
-    let (success, message, machine_list) = match serde_json::from_str::<IndexMap<String, String>>(&s){
-        Ok(table_map)=>{
-            let mut machine_list:Vec<String>=vec![];
-            for machine in table_map.keys(){
-                machine_list.push(machine.clone());
-            }
-            (true, "success".to_string(), machine_list)
-        }
-        Err(e)=>{
-            let machine_list:Vec<String>=vec![];
-            (false, format!("{}",e), machine_list)
-        }
-    };
 
     let response=serde_json::json!({
-        "success":success,
-        "message":message,
-        "machine_list":machine_list
+        "success":true,
+        "message":"success",
+        "machine_list":[1,2,3,4,5,6,7,8]
     });
 
     HttpResponse::Ok().json(response)
@@ -126,7 +102,7 @@ async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpRespon
     let grid_data_initial=GridData{x_min:0,y_min:0,grid_x:0.,grid_y:0.,histogram_bin_info:None};
     println!("{:?}",graph_condition);
 
-    let (success,message,graph_data,grid_data)=match get_graphdata_from_db(&DB_PATH, &graph_condition){
+    let (success,message,graph_data,grid_data)=match get_graphdata_from_db(&DB_URL, &graph_condition).await{
         Ok(data)=>{(true, "success".to_string(), data.0,data.1)},
         Err(e)=>{(false, format!("{}",e),HashMap::new(),grid_data_initial)}
     };
