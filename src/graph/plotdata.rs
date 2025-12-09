@@ -16,13 +16,23 @@ pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap
 
     let rows = data_map.get_mut("data").unwrap();
     for row in rows_data {
-        let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
-            XdimData::StringData(row.try_get(0)?)
+        let y_opt: Option<i32> = row.try_get(1).ok().flatten();
+
+        let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
+            row.try_get::<Option<chrono::NaiveDateTime>, _>(0).ok().flatten().is_some()
         }else{
-            XdimData::NumberData(row.try_get(0)?)
+            row.try_get::<Option<i32>, _>(0).ok().flatten().is_some()
         };
-        let y_value: i32 = row.try_get(1)?;
-        rows.push(PlotData::Scatter(ScatterPlotData{x_data:x_value,y_data:y_value}));
+
+        // XとYの両方がSomeの場合のみプッシュ
+        if x_is_valid && y_opt.is_some() {
+            let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+                XdimData::DateData(row.try_get(0).ok())
+            }else{
+                XdimData::NumberData(row.try_get(0).ok())
+            };
+            rows.push(PlotData::Scatter(ScatterPlotData{x_data:x_value,y_data:y_opt}));
+        }
     }
 
     println!("Final data_map size: {}", rows.len());
@@ -38,15 +48,25 @@ pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<St
 
     for row in rows_data {
         let unit_name: String = row.try_get(0)?;
-        let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
-            XdimData::StringData(row.try_get(1)?)
+        let y_opt: Option<i32> = row.try_get(2).ok().flatten();
+
+        let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
+            row.try_get::<Option<chrono::NaiveDateTime>, _>(1).ok().flatten().is_some()
         }else{
-            XdimData::NumberData(row.try_get(1)?)
+            row.try_get::<Option<i32>, _>(1).ok().flatten().is_some()
         };
-        let y_value: i32 = row.try_get(2)?;
-        data_map.entry(unit_name).or_insert(vec![]).push(
-            PlotData::Scatter(ScatterPlotData{x_data:x_value, y_data:y_value})
-        );
+
+        // XとYの両方がSomeの場合のみプッシュ
+        if x_is_valid && y_opt.is_some() {
+            let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+                XdimData::DateData(row.try_get(1).ok())
+            }else{
+                XdimData::NumberData(row.try_get(1).ok())
+            };
+            data_map.entry(unit_name).or_insert(vec![]).push(
+                PlotData::Scatter(ScatterPlotData{x_data:x_value, y_data:y_opt})
+            );
+        }
     }
     Ok(())
 }
@@ -66,16 +86,22 @@ pub async fn plot_lineplot_without_unit(total_count:i64,data_map:&mut HashMap<St
 
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
         for row in rows_data {
-            let y_value: i32 = row.try_get(1)?;
-            rows.push(PlotData::Line(LinePlotData{y_data:y_value,is_alarm:false}));
+            let y_value: Option<i32> = row.try_get(1).ok().flatten();
+            // Yがnullでない場合のみプッシュ
+            if y_value.is_some() {
+                rows.push(PlotData::Line(LinePlotData{y_data:y_value,is_alarm:false}));
+            }
         }
     }else{
         let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
         for row in rows_data {
-            let y_value: i32 = row.try_get(1)?;
-            let alarm_value: i32 = row.try_get(2)?;
-            let is_alarm = target_alarm_code.contains(&alarm_value);
-            rows.push(PlotData::Line(LinePlotData{y_data:y_value,is_alarm}));
+            let y_value: Option<i32> = row.try_get(1).ok().flatten();
+            // Yがnullでない場合のみプッシュ
+            if y_value.is_some() {
+                let alarm_value: Option<i32> = row.try_get(2).ok().flatten();
+                let is_alarm = alarm_value.map(|v| target_alarm_code.contains(&v)).unwrap_or(false);
+                rows.push(PlotData::Line(LinePlotData{y_data:y_value,is_alarm}));
+            }
         }
     }
 
@@ -93,21 +119,27 @@ pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<Strin
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
         for row in rows_data {
             let unit: String = row.try_get(0)?;
-            let y_value: i32 = row.try_get(2)?;
-            data_map.entry(unit).or_insert(vec![]).push(
-                PlotData::Line(LinePlotData{y_data:y_value,is_alarm:false})
-            );
+            let y_value: Option<i32> = row.try_get(2).ok().flatten();
+            // Yがnullでない場合のみプッシュ
+            if y_value.is_some() {
+                data_map.entry(unit).or_insert(vec![]).push(
+                    PlotData::Line(LinePlotData{y_data:y_value,is_alarm:false})
+                );
+            }
         }
     }else{
         let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
         for row in rows_data {
             let unit: String = row.try_get(0)?;
-            let y_value: i32 = row.try_get(2)?;
-            let alarm_value: i32 = row.try_get(3)?;
-            let is_alarm = target_alarm_code.contains(&alarm_value);
-            data_map.entry(unit).or_insert(vec![]).push(
-                PlotData::Line(LinePlotData{y_data:y_value,is_alarm})
-            );
+            let y_value: Option<i32> = row.try_get(2).ok().flatten();
+            // Yがnullでない場合のみプッシュ
+            if y_value.is_some() {
+                let alarm_value: Option<i32> = row.try_get(3).ok().flatten();
+                let is_alarm = alarm_value.map(|v| target_alarm_code.contains(&v)).unwrap_or(false);
+                data_map.entry(unit).or_insert(vec![]).push(
+                    PlotData::Line(LinePlotData{y_data:y_value,is_alarm})
+                );
+            }
         }
     }
     Ok(())
@@ -125,8 +157,9 @@ pub async fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<
 
     let mut query_rows: Vec<i32> = Vec::new();
     for row in rows_data {
-        let x_value: i32 = row.try_get(0)?;
-        query_rows.push(x_value);
+        if let Ok(Some(x_value)) = row.try_get::<Option<i32>, _>(0) {
+            query_rows.push(x_value);
+        }
     }
 
     if query_rows.is_empty(){
@@ -184,8 +217,9 @@ pub async fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<Str
     let mut query_rows: Vec<(String,i32)> = Vec::new();
     for row in rows_data {
         let unit_name: String = row.try_get(0)?;
-        let x_value: i32 = row.try_get(1)?;
-        query_rows.push((unit_name, x_value));
+        if let Ok(Some(x_value)) = row.try_get::<Option<i32>, _>(1) {
+            query_rows.push((unit_name, x_value));
+        }
     }
 
     if query_rows.is_empty(){
@@ -260,13 +294,15 @@ pub async fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap
 
     let mut query_rows: Vec<(i32, i32)> = Vec::new();
     for row in rows_data {
-        let x_value: i32 = row.try_get(0)?;
-        let y_value: i32 = row.try_get(1)?;
-        if x_value < x_min { x_min = x_value; }
-        if x_value > x_max { x_max = x_value; }
-        if y_value < y_min { y_min = y_value; }
-        if y_value > y_max { y_max = y_value; }
-        query_rows.push((x_value, y_value));
+        let x_value_opt: Option<i32> = row.try_get(0).ok().flatten();
+        let y_value_opt: Option<i32> = row.try_get(1).ok().flatten();
+        if let (Some(x_value), Some(y_value)) = (x_value_opt, y_value_opt) {
+            if x_value < x_min { x_min = x_value; }
+            if x_value > x_max { x_max = x_value; }
+            if y_value < y_min { y_min = y_value; }
+            if y_value > y_max { y_max = y_value; }
+            query_rows.push((x_value, y_value));
+        }
     }
 
     //グリッド幅を計算
@@ -289,7 +325,7 @@ pub async fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap
     let rows= data_map.get_mut("data").unwrap();
     for y in 0..graph_condition.bins_y{
         for x in 0..graph_condition.bins_x{
-            rows.push(PlotData::Heatmap(HeatmapData{x_data:x,y_data:y,z_data:arr[x as usize][y as usize]}));
+            rows.push(PlotData::Heatmap(HeatmapData{x_data:x,y_data:y,z_data:Some(arr[x as usize][y as usize])}));
         }
     }
 

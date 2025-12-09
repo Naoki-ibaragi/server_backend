@@ -34,25 +34,25 @@ pub struct AlarmInfo{ //アラームプロットを重ねる場合：アラー�
 /*プロットデータ型の定義 */
 #[derive(Debug,Serialize)]
 pub enum XdimData{
-    NumberData(i32),
-    StringData(String)
+    NumberData(Option<i32>),
+    DateData(Option<chrono::NaiveDateTime>)
 }
 
 #[derive(Debug,Serialize)]
 pub struct ScatterPlotData{
     pub x_data:XdimData, //日付等の文字列と通常数値両方取る可能性がある
-    pub y_data:i32,
+    pub y_data:Option<i32>,
 }
 
 #[derive(Debug,Serialize)]
 pub struct LinePlotData{
-    pub y_data:i32,
+    pub y_data:Option<i32>,
     pub is_alarm:bool,
 }
 
 #[derive(Debug,Serialize)]
 pub struct HistogramData{
-    pub x_data:i32,
+    pub x_data:Option<i32>,
 }
 
 #[derive(Debug,Serialize)]
@@ -71,7 +71,7 @@ pub struct HistogramBinInfo{
 pub struct HeatmapData{
     pub x_data:u32,
     pub y_data:u32,
-    pub z_data:i32,
+    pub z_data:Option<i32>,
 }
 
 #[derive(Debug,Serialize)]
