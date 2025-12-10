@@ -93,3 +93,9 @@ pub struct GridData{
     pub histogram_bin_info: Option<HistogramBinInfo>,  // ヒストグラムのビン情報
 }
 
+#[derive(Debug,Serialize)]
+pub enum UnitType{
+    String(String),
+    Number(i32)
+}
+

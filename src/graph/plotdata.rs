@@ -47,7 +47,15 @@ pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<St
         .await?;
 
     for row in rows_data {
-        let unit_name: String = row.try_get(0)?;
+        // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
+        let unit_name: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
+            s
+        } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
+            i.to_string()
+        } else {
+            continue; // unit_nameが取得できない場合はスキップ
+        };
+
         let y_opt: Option<i32> = row.try_get(2).ok().flatten();
 
         let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
@@ -118,7 +126,15 @@ pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<Strin
 
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
         for row in rows_data {
-            let unit: String = row.try_get(0)?;
+            // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
+            let unit: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
+                s
+            } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
+                i.to_string()
+            } else {
+                continue; // unit_nameが取得できない場合はスキップ
+            };
+
             let y_value: Option<i32> = row.try_get(2).ok().flatten();
             // Yがnullでない場合のみプッシュ
             if y_value.is_some() {
@@ -130,7 +146,15 @@ pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<Strin
     }else{
         let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
         for row in rows_data {
-            let unit: String = row.try_get(0)?;
+            // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
+            let unit: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
+                s
+            } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
+                i.to_string()
+            } else {
+                continue; // unit_nameが取得できない場合はスキップ
+            };
+
             let y_value: Option<i32> = row.try_get(2).ok().flatten();
             // Yがnullでない場合のみプッシュ
             if y_value.is_some() {
@@ -216,7 +240,15 @@ pub async fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<Str
 
     let mut query_rows: Vec<(String,i32)> = Vec::new();
     for row in rows_data {
-        let unit_name: String = row.try_get(0)?;
+        // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
+        let unit_name: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
+            s
+        } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
+            i.to_string()
+        } else {
+            continue; // unit_nameが取得できない場合はスキップ
+        };
+
         if let Ok(Some(x_value)) = row.try_get::<Option<i32>, _>(1) {
             query_rows.push((unit_name, x_value));
         }
