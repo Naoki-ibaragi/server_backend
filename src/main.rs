@@ -122,7 +122,7 @@ async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpRespon
 async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         let cors = Cors::default()
-            .allowed_origin("http://localhost:5174")
+            .allow_any_origin()
             .allowed_methods(vec!["GET", "POST", "OPTIONS"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,
