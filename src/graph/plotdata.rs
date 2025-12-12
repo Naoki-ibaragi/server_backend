@@ -15,65 +15,125 @@ pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap
     println!("query_rows collected: {} rows", rows_data.len());
 
     let rows = data_map.get_mut("data").unwrap();
-    for row in rows_data {
-        let y_opt: Option<i32> = row.try_get(1).ok().flatten();
+    if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
+        for row in rows_data {
+            let y_opt: Option<i32> = row.try_get(1).ok().flatten();
 
-        let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
-            row.try_get::<Option<chrono::NaiveDateTime>, _>(0).ok().flatten().is_some()
-        }else{
-            row.try_get::<Option<i32>, _>(0).ok().flatten().is_some()
-        };
-
-        // XとYの両方がSomeの場合のみプッシュ
-        if x_is_valid && y_opt.is_some() {
-            let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
-                XdimData::DateData(row.try_get(0).ok())
+            let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
+                row.try_get::<Option<chrono::NaiveDateTime>, _>(0).ok().flatten().is_some()
             }else{
-                XdimData::NumberData(row.try_get(0).ok())
+                row.try_get::<Option<i32>, _>(0).ok().flatten().is_some()
             };
-            rows.push(PlotData::Scatter(ScatterPlotData{x_data:x_value,y_data:y_opt}));
+
+            // XとYの両方がSomeの場合のみプッシュ
+            if x_is_valid && y_opt.is_some() {
+                let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+                    XdimData::DateData(row.try_get(0).ok())
+                }else{
+                    XdimData::NumberData(row.try_get(0).ok())
+                };
+                rows.push(PlotData::Scatter(ScatterPlotData{x_data:x_value,y_data:y_opt,is_alarm:false}));
+            }
+        }
+    }else{ //アラームをふくめる場合
+        let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
+        for row in rows_data {
+            let y_opt: Option<i32> = row.try_get(1).ok().flatten();
+
+            let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
+                row.try_get::<Option<chrono::NaiveDateTime>, _>(0).ok().flatten().is_some()
+            }else{
+                row.try_get::<Option<i32>, _>(0).ok().flatten().is_some()
+            };
+
+            // XとYの両方がSomeの場合のみプッシュ
+            if x_is_valid && y_opt.is_some() {
+                let alarm_value: Option<i32> = row.try_get(2).ok().flatten();
+                let is_alarm = alarm_value.map(|v| target_alarm_code.contains(&v)).unwrap_or(false);
+                let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+                    XdimData::DateData(row.try_get(0).ok())
+                }else{
+                    XdimData::NumberData(row.try_get(0).ok())
+                };
+                rows.push(PlotData::Scatter(ScatterPlotData{x_data:x_value,y_data:y_opt,is_alarm}));
+            }
         }
     }
-
-    println!("Final data_map size: {}", rows.len());
 
     Ok(())
 }
 
 //プロット分割する散布図のデータを取得
 pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+    //DBからデータを取得
     let rows_data = sqlx::query(sql)
         .fetch_all(pool)
         .await?;
 
-    for row in rows_data {
-        // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
-        let unit_name: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
-            s
-        } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
-            i.to_string()
-        } else {
-            continue; // unit_nameが取得できない場合はスキップ
-        };
-
-        let y_opt: Option<i32> = row.try_get(2).ok().flatten();
-
-        let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
-            row.try_get::<Option<chrono::NaiveDateTime>, _>(1).ok().flatten().is_some()
-        }else{
-            row.try_get::<Option<i32>, _>(1).ok().flatten().is_some()
-        };
-
-        // XとYの両方がSomeの場合のみプッシュ
-        if x_is_valid && y_opt.is_some() {
-            let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
-                XdimData::DateData(row.try_get(1).ok())
-            }else{
-                XdimData::NumberData(row.try_get(1).ok())
+    if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
+        for row in rows_data {
+            // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
+            let unit_name: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
+                s
+            } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
+                i.to_string()
+            } else {
+                continue; // unit_nameが取得できない場合はスキップ
             };
-            data_map.entry(unit_name).or_insert(vec![]).push(
-                PlotData::Scatter(ScatterPlotData{x_data:x_value, y_data:y_opt})
-            );
+
+            let y_opt: Option<i32> = row.try_get(2).ok().flatten();
+
+            let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
+                row.try_get::<Option<chrono::NaiveDateTime>, _>(1).ok().flatten().is_some()
+            }else{
+                row.try_get::<Option<i32>, _>(1).ok().flatten().is_some()
+            };
+
+            // XとYの両方がSomeの場合のみプッシュ
+            if x_is_valid && y_opt.is_some() {
+                let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+                    XdimData::DateData(row.try_get(1).ok())
+                }else{
+                    XdimData::NumberData(row.try_get(1).ok())
+                };
+                data_map.entry(unit_name).or_insert(vec![]).push(
+                    PlotData::Scatter(ScatterPlotData{x_data:x_value, y_data:y_opt,is_alarm:false})
+                );
+            }
+        }
+    }else{
+        let target_alarm_code:Vec<i32>=graph_condition.alarm.codes.clone(); //集計対象のアラームコードリスト
+        for row in rows_data {
+            // unit_nameはINTEGERまたはVARCHAR型の可能性があるので、両方試す
+            let unit_name: String = if let Ok(Some(s)) = row.try_get::<Option<String>, _>(0) {
+                s
+            } else if let Ok(Some(i)) = row.try_get::<Option<i32>, _>(0) {
+                i.to_string()
+            } else {
+                continue; // unit_nameが取得できない場合はスキップ
+            };
+
+            let y_opt: Option<i32> = row.try_get(1).ok().flatten();
+
+            let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
+                row.try_get::<Option<chrono::NaiveDateTime>, _>(0).ok().flatten().is_some()
+            }else{
+                row.try_get::<Option<i32>, _>(0).ok().flatten().is_some()
+            };
+
+            // XとYの両方がSomeの場合のみプッシュ
+            if x_is_valid && y_opt.is_some() {
+                let alarm_value: Option<i32> = row.try_get(2).ok().flatten();
+                let is_alarm = alarm_value.map(|v| target_alarm_code.contains(&v)).unwrap_or(false);
+                let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
+                    XdimData::DateData(row.try_get(1).ok())
+                }else{
+                    XdimData::NumberData(row.try_get(1).ok())
+                };
+                data_map.entry(unit_name).or_insert(vec![]).push(
+                    PlotData::Scatter(ScatterPlotData{x_data:x_value, y_data:y_opt,is_alarm})
+                );
+            }
         }
     }
     Ok(())

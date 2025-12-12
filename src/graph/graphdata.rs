@@ -2,6 +2,7 @@
 use sqlx::{PgPool, Row,Column};
 use std::error::Error;
 use std::collections::HashMap;
+use std::time::Instant;
 
 //独自クレートのimport
 use crate::graph::variants::*;
@@ -39,6 +40,8 @@ pub async fn get_graphdata_from_db(database_url:&str,graph_condition:&GraphCondi
     let mut data_map:HashMap<String,Vec<PlotData>>=HashMap::new();
     let mut grid_data=GridData{grid_x:0.,grid_y:0.,x_min:0,y_min:0,histogram_bin_info:None};
 
+    let start=Instant::now();
+
     //グラフ種類ごとにデータを格納
     match graph_condition.plot_unit.as_str() {
         "None" => match graph_condition.graph_type.as_str() {
@@ -61,6 +64,9 @@ pub async fn get_graphdata_from_db(database_url:&str,graph_condition:&GraphCondi
             _ => {},
         },
     };
+
+    let duration=start.elapsed();
+    println!("処理時間:{:?}",duration);
 
     //アラームのプロットを重ねる場合の処理を入れる
     if !graph_condition.alarm.codes.is_empty() && graph_condition.graph_type!="LinePlot" {
@@ -85,7 +91,6 @@ pub async fn get_graphdata_from_db(database_url:&str,graph_condition:&GraphCondi
         //アラーム分のデータをdata_mapに追加する
         match graph_condition.plot_unit.as_str() {
             "None" => match graph_condition.graph_type.as_str() { //ユニット毎にデータをまとめない
-                "ScatterPlot" => plot_scatterplot_without_unit_only_alarm_data(total_count, &mut data_map, &pool, &alarm_sql, &graph_condition).await?,
                 "Histogram" => {
                     if let Some(ref bin_info) = grid_data.histogram_bin_info {
                         plot_histogram_without_unit_only_alarm_data(total_count, &mut data_map, &pool, &alarm_sql, bin_info).await?;
@@ -94,7 +99,6 @@ pub async fn get_graphdata_from_db(database_url:&str,graph_condition:&GraphCondi
                 _ => {},
             },
             _ => match graph_condition.graph_type.as_str() { //ユニット毎にデータをまとめる
-                "ScatterPlot" => plot_scatterplot_with_unit_only_alarm_data(total_count, &mut data_map, &pool, &alarm_sql, &graph_condition).await?,
                 "Histogram" => {
                     if let Some(ref bin_info) = grid_data.histogram_bin_info {
                         plot_histogram_with_unit_only_alarm_data(total_count, &mut data_map, &pool, &alarm_sql, bin_info).await?;

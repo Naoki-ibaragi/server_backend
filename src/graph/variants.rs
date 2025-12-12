@@ -42,6 +42,7 @@ pub enum XdimData{
 pub struct ScatterPlotData{
     pub x_data:XdimData, //日付等の文字列と通常数値両方取る可能性がある
     pub y_data:Option<i32>,
+    pub is_alarm:bool,
 }
 
 #[derive(Debug,Serialize)]
