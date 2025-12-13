@@ -7,12 +7,14 @@ use crate::graph::variants::*;
 
 /* histogram */
 //プロット分割しないヒストグラムのアラーム部分だけのデータを取得
-pub async fn plot_histogram_without_unit_only_alarm_data(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,bin_info:&HistogramBinInfo)->Result<(),Box<dyn Error>>{
+pub async fn plot_histogram_without_unit_only_alarm_data(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],bin_info:&HistogramBinInfo)->Result<(),Box<dyn Error>>{
     data_map.entry("alarm_data".to_string()).or_insert(vec![]);
 
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     let mut query_rows: Vec<i32> = Vec::new();
     for row in rows_data {
@@ -54,10 +56,12 @@ pub async fn plot_histogram_without_unit_only_alarm_data(_total_count:i64,data_m
 }
 
 //プロット分割するヒストグラムのアラームデータを取得
-pub async fn plot_histogram_with_unit_only_alarm_data(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,bin_info:&HistogramBinInfo)->Result<(),Box<dyn Error>>{
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+pub async fn plot_histogram_with_unit_only_alarm_data(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],bin_info:&HistogramBinInfo)->Result<(),Box<dyn Error>>{
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     let mut query_rows: Vec<(String,i32)> = Vec::new();
     for row in rows_data {

@@ -1,12 +1,14 @@
 use actix_web::{post, web, App, HttpResponse, HttpServer};
 use actix_cors::Cors;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use indexmap::IndexMap;
-use variants::{LotData,MachineData,AlarmDetail};
+use variants::{LotData,MachineData};
 use graph::variants::GraphCondition;
 use std::{env,fs};
 use once_cell::sync::Lazy;
+use sqlx::PgPool;
+use tracing::{info, error, debug};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 use crate::graph::variants::{GridData};
 use crate::lotdata::get_lotdata;
@@ -24,24 +26,34 @@ static DB_URL: Lazy<String> = Lazy::new(|| {
 
 static ALARM_JSON_PATH: Lazy<String> = Lazy::new(|| {
     env::var("ALARM_JSON_PATH").unwrap_or("C:\\workspace\\server_backend\\assets\\alarm.json".to_string())
-}); 
+});
+
+// アプリケーション状態（DB接続プールを保持）
+struct AppState {
+    db_pool: PgPool,
+} 
 
 // ロット単位のデータを返す
 //Input:lot_number
 //Output:稼働データ
 #[post("/download_lot")]
-async fn download_lot(data: web::Json<LotData>) -> HttpResponse {
+async fn download_lot(
+    state: web::Data<AppState>,
+    data: web::Json<LotData>
+) -> HttpResponse {
     let success;
     let message;
-    let lotdata=match get_lotdata(&DB_URL,&data.lot_name).await{
+    let lotdata=match get_lotdata(&state.db_pool,&data.lot_name).await{
         Ok(v)=>{
             success=true;
             message="success!".to_string();
+            info!("Successfully retrieved lot data for lot_name: {}", data.lot_name);
             v
         },
         Err(e)=>{
             success=false;
             message=format!("{}",e);
+            error!("Failed to retrieve lot data for lot_name: {}, error: {}", data.lot_name, e);
             vec![]
         }
     };
@@ -56,20 +68,25 @@ async fn download_lot(data: web::Json<LotData>) -> HttpResponse {
 }
 
 #[post("/download_alarm")]
-async fn download_alarm(data: web::Json<MachineData>) -> HttpResponse {
+async fn download_alarm(
+    state: web::Data<AppState>,
+    data: web::Json<MachineData>
+) -> HttpResponse {
     let success;
     let message;
-    println!("{:?}",data);
-    println!("ALARM_JSON_PATH: {}", &*ALARM_JSON_PATH);
-    let lotdata=match get_alarmdata(&DB_URL, &ALARM_JSON_PATH,data.machine_id,&data.start_date,&data.end_date).await{
+    debug!("Received alarm data request: {:?}", data);
+    debug!("ALARM_JSON_PATH: {}", &*ALARM_JSON_PATH);
+    let lotdata=match get_alarmdata(&state.db_pool, &ALARM_JSON_PATH,data.machine_id,&data.start_date,&data.end_date).await{
         Ok(v)=>{
             success=true;
             message="success!".to_string();
+            info!("Successfully retrieved alarm data for machine_id: {}", data.machine_id);
             v
         },
         Err(e)=>{
             success=false;
             message=format!("{}",e);
+            error!("Failed to retrieve alarm data for machine_id: {}, error: {}", data.machine_id, e);
             HashMap::new()
         }
     };
@@ -98,13 +115,22 @@ async fn get_machine_list()->HttpResponse{
 
 ///グラフデータを返す
 #[post("/get_graphdata")]
-async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpResponse {
+async fn get_graphdata(
+    state: web::Data<AppState>,
+    graph_condition: web::Json<GraphCondition>
+) -> HttpResponse {
     let grid_data_initial=GridData{x_min:0,y_min:0,grid_x:0.,grid_y:0.,histogram_bin_info:None};
-    println!("{:?}",graph_condition);
+    debug!("Received graph data request: {:?}", graph_condition);
 
-    let (success,message,graph_data,grid_data)=match get_graphdata_from_db(&DB_URL, &graph_condition).await{
-        Ok(data)=>{(true, "success".to_string(), data.0,data.1)},
-        Err(e)=>{(false, format!("{}",e),HashMap::new(),grid_data_initial)}
+    let (success,message,graph_data,grid_data)=match get_graphdata_from_db(&state.db_pool, &graph_condition).await{
+        Ok(data)=>{
+            info!("Successfully retrieved graph data for graph_type: {}", graph_condition.graph_type);
+            (true, "success".to_string(), data.0,data.1)
+        },
+        Err(e)=>{
+            error!("Failed to retrieve graph data, error: {}", e);
+            (false, format!("{}",e),HashMap::new(),grid_data_initial)
+        }
     };
 
     let response=serde_json::json!({
@@ -120,7 +146,42 @@ async fn get_graphdata(graph_condition: web::Json<GraphCondition>) -> HttpRespon
 // --- メイン ---
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
+    // ログディレクトリのパスを設定（環境変数で上書き可能）
+    let log_dir = env::var("LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
+
+    // ログディレクトリを作成
+    fs::create_dir_all(&log_dir)?;
+
+    // 日次ローテーションのファイルアペンダーを作成
+    let file_appender = RollingFileAppender::new(
+        Rotation::DAILY,
+        &log_dir,
+        "app.log"
+    );
+
+    // 環境変数からログレベルを設定（デフォルト: info）
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // ログサブスクライバーを設定
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_writer(file_appender).with_ansi(false)) // ファイル出力
+        .with(fmt::layer().with_writer(std::io::stdout)) // コンソール出力
+        .init();
+
+    info!("Logging initialized. Log directory: {}", log_dir);
+
+    // DB接続プールを作成
+    info!("Connecting to database: {}", &*DB_URL);
+    let db_pool = PgPool::connect(&DB_URL)
+        .await
+        .expect("Failed to create database connection pool");
+
+    info!("Database connection pool created successfully");
+    info!("Starting HTTP server on 0.0.0.0:8080");
+
+    HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
             .allowed_methods(vec!["GET", "POST", "OPTIONS"])
@@ -132,6 +193,9 @@ async fn main() -> std::io::Result<()> {
             .max_age(3600);
 
         App::new()
+            .app_data(web::Data::new(AppState {
+                db_pool: db_pool.clone(),
+            }))
             .wrap(cors)
             .service(download_lot)
             .service(download_alarm)

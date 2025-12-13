@@ -1,6 +1,7 @@
 use sqlx::{PgPool, Row,Column};
 use serde::Serialize;
 use chrono;
+use tracing::debug;
 
 #[derive(Debug, Serialize)]
 pub enum DBData {
@@ -9,14 +10,13 @@ pub enum DBData {
     None
 }
 
-pub async fn get_lotdata(database_url:&str,lot_name: &str) -> Result<Vec<Vec<DBData>>, Box<dyn std::error::Error>> {
-    // PostgreSQL接続
-    let pool = PgPool::connect(database_url).await?;
+pub async fn get_lotdata(pool:&PgPool,lot_name: &str) -> Result<Vec<Vec<DBData>>, Box<dyn std::error::Error>> {
+    // プールから接続を使用
 
     //最初にlotdateテーブルからロットのstart_timeとend_timeを取得
     let sql="SELECT start_date, end_date FROM lotdate WHERE lot_name = $1";
     let metadata = sqlx::query(sql).bind(lot_name)
-    .fetch_one(&pool).await?;
+    .fetch_one(pool).await?;
 
     let start_date: chrono::NaiveDateTime = metadata.try_get("start_date")?;
     let end_date: chrono::NaiveDateTime = metadata.try_get("end_date")?;
@@ -25,14 +25,13 @@ pub async fn get_lotdata(database_url:&str,lot_name: &str) -> Result<Vec<Vec<DBD
     // シリアル番号の昇順で並び替える
     let sql = "SELECT * FROM CHIPDATA WHERE lot_name = $1 AND ld_pickup_date BETWEEN $2 AND $3 ORDER BY serial ASC";
 
-    println!("=== SQL ===");
-    println!("{}", sql);
-    println!("lot_name: {}", lot_name);
-    println!("===========");
+    debug!("Executing SQL query for lot data");
+    debug!("SQL: {}", sql);
+    debug!("lot_name: {}, start_date: {}, end_date: {}", lot_name, start_date, end_date);
 
     let rows = sqlx::query(sql)
         .bind(lot_name).bind(start_date).bind(end_date)
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await?;
 
     let mut lot_unit_vec = Vec::new();
@@ -68,7 +67,7 @@ pub async fn get_lotdata(database_url:&str,lot_name: &str) -> Result<Vec<Vec<DBD
                 }
             } else {
                 // その他の型はNoneとして扱う
-                println!("Unknown type for column: {}", column_name);
+                debug!("Unknown type for column: {}", column_name);
                 DBData::None
             };
 
@@ -78,7 +77,7 @@ pub async fn get_lotdata(database_url:&str,lot_name: &str) -> Result<Vec<Vec<DBD
         lot_unit_vec.push(row_data);
     }
 
-    pool.close().await;
+    // プールは自動的に管理されるため、closeは不要
 
     Ok(lot_unit_vec)
 }

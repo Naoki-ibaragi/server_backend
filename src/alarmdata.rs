@@ -5,15 +5,16 @@ use serde_json;
 use std::{fs};
 use std::error::Error;
 use chrono::NaiveDateTime;
+use tracing::debug;
 
 use crate::variants::{ChipRecord,AlarmDetail,LotUnitData,AlarmCounts};
 
-pub async fn get_alarmdata(database_url: &str, alarm_json_path:&str,machine_id:i32,start_date:&str,end_date:&str) -> Result<HashMap<String, LotUnitData>,Box<dyn Error>> {
+pub async fn get_alarmdata(pool: &PgPool, alarm_json_path:&str,machine_id:i32,start_date:&str,end_date:&str) -> Result<HashMap<String, LotUnitData>,Box<dyn Error>> {
 
     //アラームコード一覧をjsonから読み込み
     let s=fs::read_to_string(alarm_json_path)?;
     let alarm_detail:AlarmDetail = serde_json::from_str(&s)?;
-    println!("alarm_detail:{:#?}",alarm_detail);
+    debug!("Loaded alarm detail from JSON: {:#?}", alarm_detail);
 
     //alarm_detailから各ユニット毎のキー一覧を追加する
     let mut ld_alarmcode_vec:Vec<i32>=vec![];
@@ -73,8 +74,7 @@ pub async fn get_alarmdata(database_url: &str, alarm_json_path:&str,machine_id:i
         uld_alarmcode_vec,
     );
 
-    // PostgreSQL接続
-    let pool = PgPool::connect(database_url).await?;
+    // プールから接続を使用
 
     // 日付文字列をNaiveDateTimeに変換
     let start_dt = NaiveDateTime::parse_from_str(start_date, "%Y-%m-%d %H:%M:%S")?;
@@ -90,7 +90,7 @@ pub async fn get_alarmdata(database_url: &str, alarm_json_path:&str,machine_id:i
         .bind(machine_id)
         .bind(start_dt)
         .bind(end_dt)
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await?;
 
     // ロット名一覧を取得してlotdateテーブルから日付情報を取得
@@ -125,7 +125,7 @@ pub async fn get_alarmdata(database_url: &str, alarm_json_path:&str,machine_id:i
             let sql = "SELECT start_date, end_date FROM lotdate WHERE lot_name = $1";
             let metadata = sqlx::query(sql)
                 .bind(&lot_name)
-                .fetch_one(&pool)
+                .fetch_one(pool)
                 .await?;
 
             let start_date: NaiveDateTime = metadata.try_get("start_date")?;
@@ -196,7 +196,7 @@ pub async fn get_alarmdata(database_url: &str, alarm_json_path:&str,machine_id:i
         }
     }
 
-    pool.close().await;
+    // プールは自動的に管理されるため、closeは不要
 
     Ok(all_lots_hashmap)
 }

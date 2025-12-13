@@ -5,12 +5,14 @@ use std::collections::HashMap;
 use crate::graph::variants::*;
 
 //プロット分割しない散布図のデータを取得
-pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     println!("query_rows collected: {} rows", rows_data.len());
 
@@ -64,11 +66,13 @@ pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap
 }
 
 //プロット分割する散布図のデータを取得
-pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
     //DBからデータを取得
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
         for row in rows_data {
@@ -141,12 +145,14 @@ pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<St
 
 //プロット分割しない折れ線グラフ(時系列プロット)のデータを取得
 //LD_PICKUP_DATEでORDERされた状態でデータ取得済
-pub async fn plot_lineplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+pub async fn plot_lineplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     println!("query_rows collected: {} rows", rows_data.len());
 
@@ -179,10 +185,12 @@ pub async fn plot_lineplot_without_unit(total_count:i64,data_map:&mut HashMap<St
 }
 
 //プロット分割する折れ線グラフのデータを取得
-pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<(),Box<dyn Error>>{
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     if graph_condition.alarm.codes.is_empty(){ //アラーム情報を取得しない場合
         for row in rows_data {
@@ -231,13 +239,15 @@ pub async fn plot_lineplot_with_unit(total_count:i64,data_map:&mut HashMap<Strin
 
 /* Heatmap(Histogram) */
 //プロット分割しないヒストグラムのデータを取得
-pub async fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
+pub async fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
     //dataキーに値を入れる
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     let mut query_rows: Vec<i32> = Vec::new();
     for row in rows_data {
@@ -293,10 +303,12 @@ pub async fn plot_histogram_without_unit(_total_count:i64,data_map:&mut HashMap<
 }
 
 //プロット分割するヒストグラムのデータを取得
-pub async fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+pub async fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<HistogramBinInfo,Box<dyn Error>>{
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     let mut query_rows: Vec<(String,i32)> = Vec::new();
     for row in rows_data {
@@ -371,12 +383,14 @@ pub async fn plot_histogram_with_unit(_total_count:i64,data_map:&mut HashMap<Str
 
 /* Heatmap(DensityPlot) */
 //プロット分割しない密度プロットのデータを取得
-pub async fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,graph_condition:&GraphCondition)->Result<GridData,Box<dyn Error>>{
+pub async fn plot_densityplot_without_unit(total_count:i64,data_map:&mut HashMap<String,Vec<PlotData>>,pool:&PgPool,sql:&str,params:&[String],graph_condition:&GraphCondition)->Result<GridData,Box<dyn Error>>{
     data_map.entry("data".to_string()).or_insert(vec![]);
 
-    let rows_data = sqlx::query(sql)
-        .fetch_all(pool)
-        .await?;
+    let mut query = sqlx::query(sql);
+    for param in params {
+        query = query.bind(param);
+    }
+    let rows_data = query.fetch_all(pool).await?;
 
     //格子幅を決めるためにx,yのmax,minを出す
     let mut x_min=i32::MAX;
