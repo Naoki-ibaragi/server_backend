@@ -49,6 +49,39 @@ const ALLOWED_COLUMNS: &[&str] = &[
 // 許可された比較演算子のリスト
 const ALLOWED_COMPARISONS: &[&str] = &["=", ">", "<", ">=", "<=", "!=", "LIKE"];
 
+// INTEGER型のカラムのリスト
+const INTEGER_COLUMNS: &[&str] = &[
+    "MACHINE_ID", "SERIAL", "WANO", "WAX", "WAY",
+    "LD_TRAY_POCKET_X", "LD_TRAY_POCKET_Y", "LD_TRAY_ALIGN_X", "LD_TRAY_ALIGN_Y",
+    "LD_ARM1_COLLET", "LD_ALARM",
+    "DC1_PRE_ALIGN_X", "DC1_PRE_ALIGN_Y", "DC1_PRE_ALIGN_T", "DC1_ARM1_COLLET",
+    "DC1_STAGE_COUNT", "DC1_PROBE_COUNT", "DC1_PROBE_X1", "DC1_PROBE_Y1",
+    "DC1_PROBE_X2", "DC1_PROBE_Y2", "DC1_STAGE_Z", "DC1_PIN_Z",
+    "DC1_CHIP_ALIGN_X", "DC1_CHIP_ALIGN_Y", "DC1_CHIP_ALIGN_T",
+    "DC1_TEST_BIN", "DC1_ARM2_COLLET", "DC1_ALARM",
+    "AC1_ARM1_COLLET", "AC1_STAGE_COUNT", "AC1_PROBE_COUNT",
+    "AC1_PROBE_X1", "AC1_PROBE_Y1", "AC1_PROBE_X2", "AC1_PROBE_Y2",
+    "AC1_STAGE_Z", "AC1_PIN_Z", "AC1_CHIP_ALIGN_X", "AC1_CHIP_ALIGN_Y",
+    "AC1_CHIP_ALIGN_T", "AC1_TEST_BIN", "AC1_ARM2_COLLET", "AC1_ALARM",
+    "AC2_ARM1_COLLET", "AC2_STAGE_COUNT", "AC2_PROBE_COUNT",
+    "AC2_PROBE_X1", "AC2_PROBE_Y1", "AC2_PROBE_X2", "AC2_PROBE_Y2",
+    "AC2_STAGE_Z", "AC2_PIN_Z", "AC2_CHIP_ALIGN_X", "AC2_CHIP_ALIGN_Y",
+    "AC2_CHIP_ALIGN_T", "AC2_TEST_BIN", "AC2_ARM2_COLLET", "AC2_ALARM",
+    "DC2_ARM1_COLLET", "DC2_STAGE_COUNT", "DC2_PROBE_COUNT",
+    "DC2_PROBE_X1", "DC2_PROBE_Y1", "DC2_PROBE_X2", "DC2_PROBE_Y2",
+    "DC2_STAGE_Z", "DC2_PIN_Z", "DC2_CHIP_ALIGN_X", "DC2_CHIP_ALIGN_Y",
+    "DC2_CHIP_ALIGN_T", "DC2_TEST_BIN", "DC2_ARM2_COLLET", "DC2_ALARM",
+    "IP_ARM1_COLLET", "IP_STAGE_COUNT", "IP_SURF_BIN", "IP_ARM2_COLLET",
+    "IP_BACK_BIN", "IP_ALARM",
+    "ULD_PRE_ALIGN_X", "ULD_PRE_ALIGN_Y", "ULD_PRE_ALIGN_T",
+    "ULD_POCKET_X", "ULD_POCKET_Y", "ULD_POCKET_ALIGN_X", "ULD_POCKET_ALIGN_Y",
+    "ULD_ARM1_COLLET", "ULD_CHIP_ALIGN_X", "ULD_CHIP_ALIGN_Y",
+    "ULD_CHIP_ALIGN_NUM", "ULD_ALARM",
+];
+
+// TIMESTAMP型のカラムのリスト
+const TIMESTAMP_COLUMNS: &[&str] = &["LD_PICKUP_DATE", "ULD_PUT_DATE"];
+
 // カラム名が安全かどうかチェック
 fn validate_column_name(column: &str) -> Result<String, String> {
     let upper_column = column.to_uppercase();
@@ -56,6 +89,18 @@ fn validate_column_name(column: &str) -> Result<String, String> {
         Ok(upper_column)
     } else {
         Err(format!("Invalid column name: {}", column))
+    }
+}
+
+// カラムの型に応じたキャストを取得
+fn get_column_cast(column: &str) -> &str {
+    let upper_column = column.to_uppercase();
+    if INTEGER_COLUMNS.contains(&upper_column.as_str()) {
+        "::integer"
+    } else if TIMESTAMP_COLUMNS.contains(&upper_column.as_str()) {
+        "::timestamp"
+    } else {
+        "" // VARCHAR型などはキャスト不要
     }
 }
 
@@ -123,12 +168,13 @@ pub fn create_sql(graph_condition: &GraphCondition) -> Result<(String, Vec<Strin
         for (index, filter) in graph_condition.filters.iter().enumerate() {
             let item = validate_column_name(&filter.item)?;
             let comparison = validate_comparison(&filter.comparison)?;
+            let cast = get_column_cast(&item);
 
             if comparison == "LIKE" {
                 sql += &format!("{} LIKE ${}", item, param_index);
                 params.push(format!("%{}%", filter.value));
             } else {
-                sql += &format!("{} {} ${}", item, comparison, param_index);
+                sql += &format!("{} {} ${}{}", item, comparison, param_index, cast);
                 params.push(filter.value.clone());
             }
             param_index += 1;
@@ -142,12 +188,12 @@ pub fn create_sql(graph_condition: &GraphCondition) -> Result<(String, Vec<Strin
             }
         }
         //パーティション情報追加
-        sql += &format!(" AND ld_pickup_date BETWEEN ${} AND ${}", param_index, param_index + 1);
+        sql += &format!(" AND ld_pickup_date BETWEEN ${}::timestamp AND ${}::timestamp", param_index, param_index + 1);
         params.push(graph_condition.start_date.clone());
         params.push(graph_condition.end_date.clone());
     } else {
         //パーティション情報追加
-        sql += &format!(" WHERE ld_pickup_date BETWEEN ${} AND ${}", param_index, param_index + 1);
+        sql += &format!(" WHERE ld_pickup_date BETWEEN ${}::timestamp AND ${}::timestamp", param_index, param_index + 1);
         params.push(graph_condition.start_date.clone());
         params.push(graph_condition.end_date.clone());
     }
@@ -228,12 +274,13 @@ pub fn create_alarm_sql(graph_condition: &GraphCondition) -> Result<(String, Vec
         for (index, filter) in graph_condition.filters.iter().enumerate() {
             let item = validate_column_name(&filter.item)?;
             let comparison = validate_comparison(&filter.comparison)?;
+            let cast = get_column_cast(&item);
 
             if comparison == "LIKE" {
                 sql += &format!("{} LIKE ${}", item, param_index);
                 params.push(format!("%{}%", filter.value));
             } else {
-                sql += &format!("{} {} ${}", item, comparison, param_index);
+                sql += &format!("{} {} ${}{}", item, comparison, param_index, cast);
                 params.push(filter.value.clone());
             }
             param_index += 1;
@@ -249,7 +296,7 @@ pub fn create_alarm_sql(graph_condition: &GraphCondition) -> Result<(String, Vec
     }
 
     //パーティション情報追加
-    sql += &format!(" AND ld_pickup_date BETWEEN ${} AND ${}", param_index, param_index + 1);
+    sql += &format!(" AND ld_pickup_date BETWEEN ${}::timestamp AND ${}::timestamp", param_index, param_index + 1);
     params.push(graph_condition.start_date.clone());
     params.push(graph_condition.end_date.clone());
 

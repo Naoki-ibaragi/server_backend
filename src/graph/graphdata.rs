@@ -13,8 +13,6 @@ use crate::graph::plotdata::*;
 
 //DBからデータを取得してHighChartで使用可能なデータに成形する
 pub async fn get_graphdata_from_db(pool:&PgPool,graph_condition:&GraphCondition)->Result<(HashMap<String,Vec<PlotData>>,GridData),Box<dyn Error>>{
-    // プールから接続を使用（自動的に管理される）
-
     //sql文を作成（パラメータ化）
     let (mut sql, params) = create_sql(&graph_condition)
         .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)) as Box<dyn Error>)?;

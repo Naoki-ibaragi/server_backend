@@ -161,7 +161,7 @@ async fn main() -> std::io::Result<()> {
 
     // 環境変数からログレベルを設定（デフォルト: info）
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+        .unwrap_or_else(|_| EnvFilter::new("debug"));
 
     // ログサブスクライバーを設定
     tracing_subscriber::registry()
