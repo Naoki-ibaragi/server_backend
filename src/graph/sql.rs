@@ -47,7 +47,7 @@ const ALLOWED_COLUMNS: &[&str] = &[
 ];
 
 // 許可された比較演算子のリスト
-const ALLOWED_COMPARISONS: &[&str] = &["=", ">", "<", ">=", "<=", "!=", "LIKE"];
+const ALLOWED_COMPARISONS: &[&str] = &["=", ">", "<", ">=", "<=", "!=", "<>", "LIKE"];
 
 // INTEGER型のカラムのリスト
 const INTEGER_COLUMNS: &[&str] = &[
@@ -130,8 +130,24 @@ pub fn create_sql(graph_condition: &GraphCondition) -> Result<(String, Vec<Strin
     };
 
     // X, Yデータ取得
-    if graph_condition.graph_type=="ScatterPlot" || graph_condition.graph_type=="DensityPlot"{
+    if graph_condition.graph_type=="ScatterPlot"{
+        println!("{:?}",graph_condition.alarm.codes);
         //プロット単位をまとめるかどうかで決める
+        if graph_condition.alarm.codes.is_empty(){ //アラームプロットを重ねない場合
+            if let Some(ref unit) = plot_unit {
+                sql += &format!("{}, {}, {} FROM chipdata", unit, x_item, y_item);
+            } else {
+                sql += &format!("{}, {} FROM chipdata", x_item, y_item);
+            }
+        }else{
+            let alarm_column = validate_column_name(&format!("{}_ALARM", graph_condition.alarm.unit))?;
+            if let Some(ref unit) = plot_unit {
+                sql += &format!("{}, {}, {}, {} FROM chipdata", unit, x_item, y_item, alarm_column);
+            } else {
+                sql += &format!("{}, {}, {} FROM chipdata", x_item, y_item, alarm_column);
+            }
+        }
+    }else if  graph_condition.graph_type=="DensityPlot"{
         if let Some(ref unit) = plot_unit {
             sql += &format!("{}, {}, {} FROM chipdata", unit, x_item, y_item);
         } else {
@@ -181,10 +197,11 @@ pub fn create_sql(graph_condition: &GraphCondition) -> Result<(String, Vec<Strin
 
             if index + 1 < graph_condition.filters.len() {
                 // filter_conjunction も検証
-                if graph_condition.filter_conjunction != "AND" && graph_condition.filter_conjunction != "OR" {
+                let conjunction = graph_condition.filter_conjunction.to_uppercase();
+                if conjunction != "AND" && conjunction != "OR" {
                     return Err("Invalid filter conjunction".to_string());
                 }
-                sql += &format!(" {} ", graph_condition.filter_conjunction);
+                sql += &format!(" {} ", conjunction);
             }
         }
         //パーティション情報追加
@@ -250,13 +267,13 @@ pub fn create_alarm_sql(graph_condition: &GraphCondition) -> Result<(String, Vec
     // 複数のアラームコードがある場合はOR条件で結合
     if !graph_condition.alarm.codes.is_empty() {
         if graph_condition.alarm.codes.len() == 1 {
-            sql += &format!("{} = ${}", alarm_column, param_index);
+            sql += &format!("{} = ${}::integer", alarm_column, param_index);
             params.push(graph_condition.alarm.codes[0].to_string());
             param_index += 1;
         } else {
             sql += "(";
             for (idx, alarm_code) in graph_condition.alarm.codes.iter().enumerate() {
-                sql += &format!("{} = ${}", alarm_column, param_index);
+                sql += &format!("{} = ${}::integer", alarm_column, param_index);
                 params.push(alarm_code.to_string());
                 param_index += 1;
 
@@ -287,10 +304,11 @@ pub fn create_alarm_sql(graph_condition: &GraphCondition) -> Result<(String, Vec
 
             if index + 1 < graph_condition.filters.len() {
                 // filter_conjunction も検証
-                if graph_condition.filter_conjunction != "AND" && graph_condition.filter_conjunction != "OR" {
+                let conjunction = graph_condition.filter_conjunction.to_uppercase();
+                if conjunction != "AND" && conjunction != "OR" {
                     return Err("Invalid filter conjunction".to_string());
                 }
-                sql += &format!(" {} ", graph_condition.filter_conjunction);
+                sql += &format!(" {} ", conjunction);
             }
         }
     }

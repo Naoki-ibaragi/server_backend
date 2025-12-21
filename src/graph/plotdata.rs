@@ -52,6 +52,7 @@ pub async fn plot_scatterplot_without_unit(total_count:i64,data_map:&mut HashMap
             if x_is_valid && y_opt.is_some() {
                 let alarm_value: Option<i32> = row.try_get(2).ok().flatten();
                 let is_alarm = alarm_value.map(|v| target_alarm_code.contains(&v)).unwrap_or(false);
+                if is_alarm{println!("OK");}
                 let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
                     XdimData::DateData(row.try_get(0).ok())
                 }else{
@@ -117,17 +118,17 @@ pub async fn plot_scatterplot_with_unit(total_count:i64,data_map:&mut HashMap<St
                 continue; // unit_nameが取得できない場合はスキップ
             };
 
-            let y_opt: Option<i32> = row.try_get(1).ok().flatten();
+            let y_opt: Option<i32> = row.try_get(2).ok().flatten();
 
             let x_is_valid = if graph_condition.graph_x_item.contains("DATE"){
-                row.try_get::<Option<chrono::NaiveDateTime>, _>(0).ok().flatten().is_some()
+                row.try_get::<Option<chrono::NaiveDateTime>, _>(1).ok().flatten().is_some()
             }else{
-                row.try_get::<Option<i32>, _>(0).ok().flatten().is_some()
+                row.try_get::<Option<i32>, _>(1).ok().flatten().is_some()
             };
 
             // XとYの両方がSomeの場合のみプッシュ
             if x_is_valid && y_opt.is_some() {
-                let alarm_value: Option<i32> = row.try_get(2).ok().flatten();
+                let alarm_value: Option<i32> = row.try_get(3).ok().flatten();
                 let is_alarm = alarm_value.map(|v| target_alarm_code.contains(&v)).unwrap_or(false);
                 let x_value: XdimData = if graph_condition.graph_x_item.contains("DATE"){
                     XdimData::DateData(row.try_get(1).ok())
