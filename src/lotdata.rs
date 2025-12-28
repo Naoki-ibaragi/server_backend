@@ -18,19 +18,20 @@ pub async fn get_lotdata(pool:&PgPool,lot_name: &str) -> Result<Vec<Vec<DBData>>
     let metadata = sqlx::query(sql).bind(lot_name)
     .fetch_one(pool).await?;
 
-    let start_date: chrono::NaiveDateTime = metadata.try_get("start_date")?;
-    let end_date: chrono::NaiveDateTime = metadata.try_get("end_date")?;
+    //let start_date: chrono::NaiveDateTime = metadata.try_get("start_date")?;
+    //let end_date: chrono::NaiveDateTime = metadata.try_get("end_date")?;
 
     // PostgreSQLではパーティションテーブルCHIPDATAを直接クエリ可能
     // シリアル番号の昇順で並び替える
-    let sql = "SELECT * FROM CHIPDATA WHERE lot_name = $1 AND ld_pickup_date BETWEEN $2 AND $3 ORDER BY serial ASC";
+    //let sql = "SELECT * FROM CHIPDATA WHERE lot_name = $1 AND ld_pickup_date >= $2 AND ld_pickup_date <= $3 ORDER BY serial ASC";
+    let sql = "SELECT * FROM CHIPDATA WHERE lot_name = $1 ORDER BY serial ASC";
 
     debug!("Executing SQL query for lot data");
     debug!("SQL: {}", sql);
-    debug!("lot_name: {}, start_date: {}, end_date: {}", lot_name, start_date, end_date);
+    //debug!("lot_name: {}, start_date: {}, end_date: {}", lot_name, start_date, end_date);
 
     let rows = sqlx::query(sql)
-        .bind(lot_name).bind(start_date).bind(end_date)
+        .bind(lot_name)
         .fetch_all(pool)
         .await?;
 

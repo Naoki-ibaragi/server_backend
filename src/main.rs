@@ -48,6 +48,8 @@ async fn download_lot(
             success=true;
             message="success!".to_string();
             info!("Successfully retrieved lot data for lot_name: {}", data.lot_name);
+            info!("{:?}",v[0]);
+            info!("{:?}",v[1]);
             v
         },
         Err(e)=>{

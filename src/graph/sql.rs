@@ -47,7 +47,7 @@ const ALLOWED_COLUMNS: &[&str] = &[
 ];
 
 // 許可された比較演算子のリスト
-const ALLOWED_COMPARISONS: &[&str] = &["=", ">", "<", ">=", "<=", "!=", "<>", "LIKE"];
+const ALLOWED_COMPARISONS: &[&str] = &["=", ">", "<", ">=", "<=", "!=", "<>", "LIKE","NOT LIKE"];
 
 // INTEGER型のカラムのリスト
 const INTEGER_COLUMNS: &[&str] = &[
