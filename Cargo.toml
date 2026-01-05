@@ -16,3 +16,5 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
+encoding_rs = "0.8"
+encoding_rs_io = "0.1"

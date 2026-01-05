@@ -160,7 +160,6 @@ async fn download_operating_data(
             message="success!".to_string();
             info!("Successfully retrieved lot data for machine_id: {}", data.machine_id);
             info!("{:?}",v[0]);
-            info!("{:?}",v[1]);
             v
         },
         Err(e)=>{
