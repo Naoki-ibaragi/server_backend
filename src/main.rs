@@ -14,11 +14,13 @@ use crate::graph::variants::{GridData};
 use crate::lotdata::get_lotdata;
 use crate::alarmdata::get_alarmdata;
 use crate::graph::graphdata::get_graphdata_from_db;
+use crate::operating_data::get_operating_data;
 
 mod lotdata;
 mod alarmdata;
 mod variants;
 mod graph;
+mod operating_data;
 
 static DB_URL: Lazy<String> = Lazy::new(|| {
     env::var("DB_URL").unwrap_or("postgresql://postgres:password@localhost:5432/chiptest".to_string())
@@ -145,6 +147,41 @@ async fn get_graphdata(
     HttpResponse::Ok().json(response)
 }
 
+#[post("/download_operating_data")]
+async fn download_operating_data(
+    state: web::Data<AppState>,
+    data: web::Json<MachineData>
+) -> HttpResponse {
+    let success;
+    let message;
+    let summary_data=match get_operating_data(&state.db_pool,data.machine_id,&data.start_date,&data.end_date).await{
+        Ok(v)=>{
+            success=true;
+            message="success!".to_string();
+            info!("Successfully retrieved lot data for machine_id: {}", data.machine_id);
+            info!("{:?}",v[0]);
+            info!("{:?}",v[1]);
+            v
+        },
+        Err(e)=>{
+            success=false;
+            message=format!("{}",e);
+            error!("Failed to retrieve lot data for machine_id: {}, error: {}", data.machine_id, e);
+            vec![]
+        }
+    };
+
+    let response = serde_json::json!({
+        "success":success,
+        "message":message,
+        "summary_data": summary_data
+    });
+
+    HttpResponse::Ok().json(response)
+}
+
+
+
 // --- メイン ---
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -203,6 +240,7 @@ async fn main() -> std::io::Result<()> {
             .service(download_alarm)
             .service(get_machine_list)
             .service(get_graphdata)
+            .service(download_operating_data)
     })
     .bind(("0.0.0.0", 8080))?
     .run()

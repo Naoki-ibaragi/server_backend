@@ -11,8 +11,6 @@ pub enum DBData {
 }
 
 pub async fn get_lotdata(pool:&PgPool,lot_name: &str) -> Result<Vec<Vec<DBData>>, Box<dyn std::error::Error>> {
-    // プールから接続を使用
-
     //最初にlotdateテーブルからロットのstart_timeとend_timeを取得
     let sql="SELECT start_date, end_date FROM lotdate WHERE lot_name = $1";
     let metadata = sqlx::query(sql).bind(lot_name)
